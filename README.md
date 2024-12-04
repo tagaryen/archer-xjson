@@ -1,5 +1,13 @@
 # archer-xjson
-json library written with pure java
+json library written with pure java  
+maven:
+```maven
+  	<dependency>
+	  <groupId>io.github.tagaryen</groupId>
+	  <artifactId>archer-xjson</artifactId>
+	  <version>1.1.5</version>
+	</dependency>
+```
 
 ## examples  
 ``` java  
