@@ -6,6 +6,10 @@
   <artifactId>archer-xjson</artifactId>
   <version>1.1.5</version>
   <packaging>jar</packaging>
+  <description>
+    JSON parser. 
+    Contact: tagaryen199@126.com
+  </description>
 
   <name>xjson</name>
   <url>https://github.com/tagaryen/archer-xjson</url>
