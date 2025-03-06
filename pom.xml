@@ -4,7 +4,7 @@
 
   <groupId>io.github.tagaryen</groupId>
   <artifactId>archer-xjson</artifactId>
-  <version>1.1.5</version>
+  <version>1.1.6</version>
   <packaging>jar</packaging>
   <description>
     JSON parser. 
@@ -111,7 +111,7 @@
         <artifactId>maven-gpg-plugin</artifactId>
         <version>1.5</version>
         <configuration>
-          <executable>D:/GnuPG/bin/gpg.exe</executable>
+          <executable>C:/Users/CESTC/Soft/GnuPG/bin/gpg.exe</executable>
           <keyname>io.github.tagaryen</keyname>
           <source>1.8</source>
           <target>1.8</target>

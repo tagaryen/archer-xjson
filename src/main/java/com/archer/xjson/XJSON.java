@@ -1,8 +1,8 @@
 package com.archer.xjson;
 
 import java.lang.reflect.Type;
-import java.util.LinkedHashMap;
-import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
 
 public class XJSON {
 	
@@ -15,14 +15,14 @@ public class XJSON {
 		stuff = new JSONStuff();
 	}
 
-	public LinkedHashMap<String, Object> parse(String json) throws XJSONException {
+	public Map<String, Object> parse(String json) throws XJSONException {
 		if(null == json || json.trim().isEmpty()) {
 			throw new XJSONException("input json string can not be null or empty.");
 		}
 		return JSONDecoder.parseToMap(json);
 	}
 
-	public LinkedList<Object> parseList(String json) throws XJSONException {
+	public List<Object> parseList(String json) throws XJSONException {
 		if(null == json || json.trim().isEmpty()) {
 			throw new XJSONException("input json string can not be null or empty.");
 		}
@@ -50,21 +50,21 @@ public class XJSON {
 		return JSONDecoder.parseToClass(json,  ref, reflector);
 	}
 
-	public <T> LinkedList<T> parseList(String json, Class<T> clazz) throws XJSONException {
+	public <T> List<T> parseList(String json, Class<T> clazz) throws XJSONException {
 		if(null == json || json.trim().isEmpty()) {
 			throw new XJSONException("input json string can not be null or empty.");
 		}
 		return JSONDecoder.parseToClassList(json, clazz, reflector);
 	}
 	
-	public <T> LinkedList<T> parseList(String json, JavaTypeRef<T> ref) throws XJSONException {
+	public <T> List<T> parseList(String json, JavaTypeRef<T> ref) throws XJSONException {
 		if(null == json || json.trim().isEmpty()) {
 			throw new XJSONException("input json string can not be null or empty.");
 		}
 		return JSONDecoder.parseToClassList(json, ref, reflector);
 	}
 
-	public <T> LinkedList<T> parseList(String json, Type type) throws XJSONException {
+	public <T> List<T> parseList(String json, Type type) throws XJSONException {
 		if(null == json || json.trim().isEmpty()) {
 			throw new XJSONException("input json string can not be null or empty.");
 		}

@@ -1,8 +1,8 @@
 package com.archer.xjson;
 
 import java.lang.reflect.Type;
-import java.util.LinkedHashMap;
-import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
 
 public class XJSONStatic {
 	
@@ -10,14 +10,14 @@ public class XJSONStatic {
 	
 	private static final JSONStuff stuff = new JSONStuff();
 	
-	public static LinkedHashMap<String, Object> parse(String json) throws XJSONException {
+	public static Map<String, Object> parse(String json) throws XJSONException {
 		if(null == json || json.trim().isEmpty()) {
 			throw new XJSONException("input json string can not be null or empty.");
 		}
 		return JSONDecoder.parseToMap(json);
 	}
 
-	public static LinkedList<Object> parseList(String json) throws XJSONException {
+	public static List<Object> parseList(String json) throws XJSONException {
 		if(null == json || json.trim().isEmpty()) {
 			throw new XJSONException("input json string can not be null or empty.");
 		}
@@ -43,19 +43,19 @@ public class XJSONStatic {
 		return JSONDecoder.parseToClass(json,  type, reflector);
 	}
 
-	public static <T> LinkedList<T> parseList(String json, Class<T> clazz) throws XJSONException {
+	public static <T> List<T> parseList(String json, Class<T> clazz) throws XJSONException {
 		if(null == json || json.trim().isEmpty()) {
 			throw new XJSONException("input json string can not be null or empty.");
 		}
 		return JSONDecoder.parseToClassList(json, clazz, reflector);
 	}
-	public static <T> LinkedList<T> parseList(String json, JavaTypeRef<T> ref) throws XJSONException {
+	public static <T> List<T> parseList(String json, JavaTypeRef<T> ref) throws XJSONException {
 		if(null == json || json.trim().isEmpty()) {
 			throw new XJSONException("input json string can not be null or empty.");
 		}
 		return JSONDecoder.parseToClassList(json, ref, reflector);
 	}
-	public static <T> LinkedList<T> parseList(String json, Type type) throws XJSONException {
+	public static <T> List<T> parseList(String json, Type type) throws XJSONException {
 		if(null == json || json.trim().isEmpty()) {
 			throw new XJSONException("input json string can not be null or empty.");
 		}

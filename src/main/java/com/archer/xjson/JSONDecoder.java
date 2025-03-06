@@ -2,8 +2,8 @@ package com.archer.xjson;
 
 import java.lang.reflect.Type;
 import java.util.Arrays;
-import java.util.LinkedHashMap;
-import java.util.LinkedList;
+import java.util.TreeMap;
+import java.util.ArrayList;
 
 class JSONDecoder {	
 	
@@ -22,6 +22,8 @@ class JSONDecoder {
 	static final char SINGLE_QUOTE = '\'';
 	static final char BACKSLASH = '\\';
 	static final char NEG = '-';
+	static final char NUM_E = 'E';
+	static final char NUM_e = 'e';
 
 	static final char[] NULL = {'n', 'u', 'l', 'l'};
 	static final char[] TRUE = {'t', 'r', 'u', 'e'};
@@ -44,13 +46,13 @@ class JSONDecoder {
 	static final short A_VAL_E = 5;
 	static final short A_E = 6;
 	
-	static int parseOneObj(char[] chars, int offset, LinkedHashMap<String, Object> ret) 
+	static int parseOneObj(char[] chars, int offset, TreeMap<String, Object> ret) 
 			throws XJSONException {
 		int keyL = 0, keyR = 0, valL = 0, valR = 0;
 		short state = K_DEFAULT;
 		int i = offset;
 		boolean objBegin = false;
-		boolean objVal = false, arrVal = false, numVal = false, numDot = false;
+		boolean objVal = false, arrVal = false, numVal = false, numDot = false, numE = false;
 		for(; i < chars.length; i++) {
 			if(!numVal) {
 				if(SPACE == chars[i] || ENTER == chars[i] || 
@@ -184,7 +186,7 @@ class JSONDecoder {
 				if(objVal) {
 					String key = new String(
 							Arrays.copyOfRange(chars, keyL, keyR));
-					LinkedHashMap<String, Object> child = new LinkedHashMap<>();
+					TreeMap<String, Object> child = new TreeMap<>();
 					int index = parseOneObj(chars, valL, child);
 					ret.put(key, child);
 					i = index - 1;
@@ -194,7 +196,7 @@ class JSONDecoder {
 				} else if(arrVal) {
 					String key = new String(
 							Arrays.copyOfRange(chars, keyL, keyR));
-					LinkedList<Object> child = new LinkedList<>();
+					ArrayList<Object> child = new ArrayList<>(32);
 					int index = parseOneArr(chars, valL, child);
 					ret.put(key, child);
 					i = index - 1;
@@ -204,6 +206,13 @@ class JSONDecoder {
 				} else if(numVal) {
 					if(48 <= chars[i] && chars[i] <= 57) {
 						continue;
+					}
+					if(!numE && (NUM_E == chars[i] || NUM_e == chars[i])) {
+						numE = true;
+						continue;
+					}
+					if(numE && (NUM_E == chars[i] || NUM_e == chars[i])) {
+						throw new XJSONException(XJSONException.getErrorMsg(chars, valL-1));
 					}
 					if(!numDot && DOT == chars[i]) {
 						numDot = true;
@@ -219,6 +228,7 @@ class JSONDecoder {
 							Arrays.copyOfRange(chars, valL, valR)));
 					numVal = false;
 					numDot = false;
+					numE = false;
 					if(B_BRACES_R == chars[i]) {
 						state = OBJ_ENDED;
 						continue;
@@ -270,7 +280,7 @@ class JSONDecoder {
 		return i;
 	}
 
-	static int parseOneArr(char[] chars, int offset, LinkedList<Object> ret) 
+	static int parseOneArr(char[] chars, int offset, ArrayList<Object> ret) 
 			throws XJSONException {
 		int i = offset, valL = 0, valR = 0;
 		short state = A_D;
@@ -398,7 +408,7 @@ class JSONDecoder {
 				}
 			}
 			if(A_ARR_S == state) {
-				LinkedList<Object> child = new LinkedList<>();
+				ArrayList<Object> child = new ArrayList<>(32);
 				int index = parseOneArr(chars, valL, child);
 				ret.add(child);
 				i = index - 1;
@@ -406,7 +416,7 @@ class JSONDecoder {
 				continue;
 			}
 			if(A_OBJ_S == state) {
-				LinkedHashMap<String, Object> child = new LinkedHashMap<>();
+				TreeMap<String, Object> child = new TreeMap<>();
 				int index = parseOneObj(chars, valL, child);
 				ret.add(child);
 				i = index - 1;
@@ -460,52 +470,52 @@ class JSONDecoder {
 		return sb.toString();
 	}
 
-	static LinkedHashMap<String, Object> parseToMap(String json) 
+	static TreeMap<String, Object> parseToMap(String json) 
 			throws XJSONException {
-		LinkedHashMap<String, Object> ret = new LinkedHashMap<>();
+		TreeMap<String, Object> ret = new TreeMap<>();
 		parseOneObj(json.toCharArray(), 0, ret);
 		return ret;
 	}
 	
-	static LinkedList<Object> parseToList(String json) 
+	static ArrayList<Object> parseToList(String json) 
 			throws XJSONException {
-		LinkedList<Object> ret = new LinkedList<>();
+		ArrayList<Object> ret = new ArrayList<>(32);
 		parseOneArr(json.toCharArray(), 0, ret);
 		return ret;
 	}
 	
 	static <T> T parseToClass(String json, Class<T> clazz, JSONReflect reflector) 
 			throws XJSONException {
-		LinkedHashMap<String, Object> obj = parseToMap(json);
+		TreeMap<String, Object> obj = parseToMap(json);
 		return reflector.reflectOneClass(obj, clazz);
 	}
 	
 	static <T> T parseToClass(String json, JavaTypeRef<T> ref, JSONReflect reflector) {
-		LinkedHashMap<String, Object> obj = parseToMap(json);
+		TreeMap<String, Object> obj = parseToMap(json);
 		return reflector.reflectOneClass(obj, ref);
 	}
 	
 	static <T> T parseToClass(String json, Type type, JSONReflect reflector) 
 			throws XJSONException {
-		LinkedHashMap<String, Object> obj = parseToMap(json);
+		TreeMap<String, Object> obj = parseToMap(json);
 		return reflector.reflectOneClass(obj, type);
 	}
 	
-	static <T> LinkedList<T> parseToClassList(String json, Class<T> clazz, JSONReflect reflector) 
+	static <T> ArrayList<T> parseToClassList(String json, Class<T> clazz, JSONReflect reflector) 
 			throws XJSONException {
-		LinkedList<Object> obj = parseToList(json);
+		ArrayList<Object> obj = parseToList(json);
 		return reflector.reflectOneList(obj, clazz);
 	}
 	
-	static <T> LinkedList<T> parseToClassList(String json, JavaTypeRef<T> ref, JSONReflect reflector) 
+	static <T> ArrayList<T> parseToClassList(String json, JavaTypeRef<T> ref, JSONReflect reflector) 
 			throws XJSONException {
-		LinkedList<Object> obj = parseToList(json);
+		ArrayList<Object> obj = parseToList(json);
 		return reflector.reflectOneList(obj, ref);
 	}
 	
-	static <T> LinkedList<T> parseToClassList(String json, Type type, JSONReflect reflector) 
+	static <T> ArrayList<T> parseToClassList(String json, Type type, JSONReflect reflector) 
 			throws XJSONException {
-		LinkedList<Object> obj = parseToList(json);
+		ArrayList<Object> obj = parseToList(json);
 		return reflector.reflectOneList(obj, type);
 	}
 }

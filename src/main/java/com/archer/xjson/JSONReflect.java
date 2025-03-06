@@ -3,7 +3,6 @@ package com.archer.xjson;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
-import java.lang.reflect.Parameter;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.lang.reflect.TypeVariable;
@@ -19,9 +18,9 @@ import java.util.Arrays;
 import java.util.Base64;
 import java.util.Collection;
 import java.util.Date;
-import java.util.LinkedHashMap;
+import java.util.TreeMap;
 import java.util.LinkedHashSet;
-import java.util.LinkedList;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Queue;
@@ -72,9 +71,9 @@ class JSONReflect {
 	protected JSONReflect() {}
 	
 	@SuppressWarnings("unchecked")
-	<T> LinkedList<T> reflectOneList(LinkedList<Object> obj, Class<T> clazz) 
+	<T> ArrayList<T> reflectOneList(ArrayList<Object> obj, Class<T> clazz) 
 			throws XJSONException {
-		LinkedList<T> ret = new LinkedList<T>();
+		ArrayList<T> ret = new ArrayList<T>();
 		for(Object val: obj) {
 			ret.add((T) fromJavaType(clazz, val));
 		}
@@ -82,9 +81,9 @@ class JSONReflect {
 	}
 	
 	@SuppressWarnings("unchecked")
-	<T> LinkedList<T> reflectOneList(LinkedList<Object> obj, JavaTypeRef<T> ref) 
+	<T> ArrayList<T> reflectOneList(ArrayList<Object> obj, JavaTypeRef<T> ref) 
 			throws XJSONException {
-		LinkedList<T> ret = new LinkedList<T>();
+		ArrayList<T> ret = new ArrayList<T>();
 		for(Object val: obj) {
 			ret.add((T) fromJavaType(ref.getJavaType(), val));
 		}
@@ -92,9 +91,9 @@ class JSONReflect {
 	}
 	
 	@SuppressWarnings("unchecked")
-	<T> LinkedList<T> reflectOneList(LinkedList<Object> obj, Type type) 
+	<T> ArrayList<T> reflectOneList(ArrayList<Object> obj, Type type) 
 			throws XJSONException {
-		LinkedList<T> ret = new LinkedList<T>();
+		ArrayList<T> ret = new ArrayList<T>();
 		for(Object val: obj) {
 			ret.add((T) fromJavaType(type, val));
 		}
@@ -102,19 +101,19 @@ class JSONReflect {
 	}
 
 	@SuppressWarnings("unchecked")
-	<T> T reflectOneClass(LinkedHashMap<String, Object> obj, Class<T> clazz) 
+	<T> T reflectOneClass(TreeMap<String, Object> obj, Class<T> clazz) 
 			throws XJSONException {
 		return (T) fromJavaType(clazz, obj);
 	}
 	
 	@SuppressWarnings("unchecked")
-	<T> T reflectOneClass(LinkedHashMap<String, Object> obj, JavaTypeRef<T> ref) 
+	<T> T reflectOneClass(TreeMap<String, Object> obj, JavaTypeRef<T> ref) 
 			throws XJSONException {
 		return (T) fromJavaType(ref.getJavaType(), obj);
 	}
 	
 	@SuppressWarnings("unchecked")
-	<T> T reflectOneClass(LinkedHashMap<String, Object> obj, Type type) 
+	<T> T reflectOneClass(TreeMap<String, Object> obj, Type type) 
 			throws XJSONException {
 		return (T) fromJavaType(type, obj);
 	}
@@ -138,28 +137,28 @@ class JSONReflect {
 			Class<?> cls = (Class<?>) javaType;
 			String clsName = cls.getName();
 			if(BOOL_ARR.equals(clsName)) {
-				return reflectToBoolArr((LinkedList<Boolean>)val);
+				return reflectToBoolArr((ArrayList<Boolean>)val);
 			}
 			if(BYTE_ARR.equals(clsName)) {
 				return reflectToByteArr((String)val);
 			}
 			if(CHAR_ARR.equals(clsName)) {
-				return reflectToCharArr((LinkedList<Character>)val);
+				return reflectToCharArr((ArrayList<Character>)val);
 			}
 			if(SHORT_ARR.equals(clsName)) {
-				return reflectToShortArr((LinkedList<Long>)val);
+				return reflectToShortArr((ArrayList<Long>)val);
 			}
 			if(INT_ARR.equals(clsName)) {
-				return reflectToIntArr((LinkedList<Long>)val);
+				return reflectToIntArr((ArrayList<Long>)val);
 			}
 			if(LONG_ARR.equals(clsName)) {
-				return reflectToLongArr((LinkedList<Long>)val);
+				return reflectToLongArr((ArrayList<Long>)val);
 			}
 			if(FLOAT_ARR.equals(clsName)) {
-				return reflectToFloatArr((LinkedList<Double>)val);
+				return reflectToFloatArr((ArrayList<Double>)val);
 			}
 			if(DOUBLE_ARR.equals(clsName)) {
-				return reflectToDoubleArr((LinkedList<Double>)val);
+				return reflectToDoubleArr((ArrayList<Double>)val);
 			}
 			if(cls.isPrimitive()) {
 				return reflectToPrimitive(cls, val);
@@ -171,13 +170,13 @@ class JSONReflect {
 			Class<?> cls = (Class<?>)pType.getRawType();
 			if(Collection.class.isAssignableFrom(cls)) {
 				return reflectCollection(cls, (ParameterizedType)javaType, 
-						(LinkedList<Object>) val);
+						(ArrayList<Object>) val);
 			}
 			if(Map.class.isAssignableFrom(cls)) {
 				return reflectMap(cls, (ParameterizedType)javaType, 
-						(LinkedHashMap<String, Object>) val);
+						(TreeMap<String, Object>) val);
 			}
-			return reflectUnknownClass(cls, (LinkedHashMap<String, Object>)val, 
+			return reflectUnknownClass(cls, (TreeMap<String, Object>)val, 
 					pType.getActualTypeArguments());
 		}
 		return null;
@@ -185,15 +184,15 @@ class JSONReflect {
 	
 	@SuppressWarnings("unchecked")
 	Collection<Object> reflectCollection(Class<?> cls, 
-			ParameterizedType javaType, LinkedList<Object> val) 
+			ParameterizedType javaType, ArrayList<Object> val) 
 			throws XJSONException {
 		Collection<Object> instance;
 		if(List.class.isAssignableFrom(cls)) {
 			if(cls.isInterface()) {
-				instance = new LinkedList<>();
+				instance = new ArrayList<>(32);
 			} else {
 				try {
-					instance = (Collection<Object>) cls.newInstance();
+					instance = (Collection<Object>) newInstance(cls);
 				} catch(Exception ignore) {
 					throw new XJSONException("can not construct class '" +
 							cls.getName() + "'");
@@ -204,7 +203,7 @@ class JSONReflect {
 				instance = new LinkedHashSet<>();
 			} else {
 				try {
-					instance = (Collection<Object>) cls.newInstance();
+					instance = (Collection<Object>) newInstance(cls);
 				} catch(Exception ignore) {
 					throw new XJSONException("can not construct class '" +
 							cls.getName() + "'");
@@ -215,7 +214,7 @@ class JSONReflect {
 				instance = new ArrayBlockingQueue<>(val.size());
 			} else {
 				try {
-					instance = (Collection<Object>) cls.newInstance();
+					instance = (Collection<Object>) newInstance(cls);
 				} catch(Exception ignore) {
 					throw new XJSONException("can not construct class '" +
 							cls.getName() + "'");
@@ -239,14 +238,14 @@ class JSONReflect {
 
 	@SuppressWarnings("unchecked")
 	Map<Object, Object> reflectMap(Class<?> cls, 
-			ParameterizedType javaType, LinkedHashMap<String, Object> val) 
+			ParameterizedType javaType, TreeMap<String, Object> val) 
 			throws XJSONException {
 		Map<Object, Object> instance;
 		if(cls.isInterface()) {
-			instance = new LinkedHashMap<>();
+			instance = new TreeMap<>();
 		} else {
 			try {
-				instance = (Map<Object, Object>) cls.newInstance();
+				instance = (Map<Object, Object>) newInstance(cls);
 			} catch(Exception ignore) {
 				throw new XJSONException("can not construct class '" +
 						cls.getName() + "'");
@@ -265,7 +264,7 @@ class JSONReflect {
 		return instance;
 	}
 	
-	static boolean[] reflectToBoolArr(LinkedList<Boolean> val) {
+	static boolean[] reflectToBoolArr(ArrayList<Boolean> val) {
 		boolean[] ret = new boolean[val.size()];
 		int i = 0;
 		for(Boolean b: val) {
@@ -283,7 +282,7 @@ class JSONReflect {
 //		return ret;
 	}
 
-	static char[] reflectToCharArr(LinkedList<Character> val) {
+	static char[] reflectToCharArr(ArrayList<Character> val) {
 		char[] ret = new char[val.size()];
 		int i = 0;
 		for(Character b: val) {
@@ -292,7 +291,7 @@ class JSONReflect {
 		return ret;
 	}
 
-	static short[] reflectToShortArr(LinkedList<Long> val) {
+	static short[] reflectToShortArr(ArrayList<Long> val) {
 		short[] ret = new short[val.size()];
 		int i = 0;
 		for(Long b: val) {
@@ -301,7 +300,7 @@ class JSONReflect {
 		return ret;
 	}
 
-	static int[] reflectToIntArr(LinkedList<Long> val) {
+	static int[] reflectToIntArr(ArrayList<Long> val) {
 		int[] ret = new int[val.size()];
 		int i = 0;
 		for(Long b: val) {
@@ -310,7 +309,7 @@ class JSONReflect {
 		return ret;
 	}
 
-	static long[] reflectToLongArr(LinkedList<Long> val) {
+	static long[] reflectToLongArr(ArrayList<Long> val) {
 		long[] ret = new long[val.size()];
 		int i = 0;
 		for(Long b: val) {
@@ -319,7 +318,7 @@ class JSONReflect {
 		return ret;
 	}
 
-	static float[] reflectToFloatArr(LinkedList<Double> val) {
+	static float[] reflectToFloatArr(ArrayList<Double> val) {
 		float[] ret = new float[val.size()];
 		int i = 0;
 		for(Double b: val) {
@@ -328,7 +327,7 @@ class JSONReflect {
 		return ret;
 	}
 
-	static double[] reflectToDoubleArr(LinkedList<Double> val) {
+	static double[] reflectToDoubleArr(ArrayList<Double> val) {
 		double[] ret = new double[val.size()];
 		int i = 0;
 		for(Double b: val) {
@@ -445,13 +444,13 @@ class JSONReflect {
 						((String) val)+"' to BigDecimal");
 			}
 		}
-		if(val instanceof LinkedHashMap) {
-			return reflectUnknownClass(cls, (LinkedHashMap<String, Object>) val, null);
+		if(val instanceof TreeMap) {
+			return reflectUnknownClass(cls, (TreeMap<String, Object>) val, null);
 		}
 		return val;
 	}
 	
-	Object reflectUnknownClass(Class<?> cls, LinkedHashMap<String, Object> val, Type[] childTypes) 
+	Object reflectUnknownClass(Class<?> cls, TreeMap<String, Object> val, Type[] childTypes) 
 			throws XJSONException {
 		Object instance = newInstance(cls);
 		Field[] fields = JSONCache.get(cls);
@@ -523,7 +522,7 @@ class JSONReflect {
 		return instance;
 	}
 	
-	void reflectToSupperCls(Class<?> superCls, LinkedHashMap<String, Object> val, Type[] childTypes, int oldCount, TreeSet<String> fieldNameSet, Object instance) {
+	void reflectToSupperCls(Class<?> superCls, TreeMap<String, Object> val, Type[] childTypes, int oldCount, TreeSet<String> fieldNameSet, Object instance) {
 		if(Object.class.equals(superCls)) {
 			return ;
 		}

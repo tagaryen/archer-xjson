@@ -97,7 +97,7 @@ class JSONEncoder {
             return String.valueOf((Long)data);
         }
         if(data instanceof Float) {
-            return String.valueOf((Float)data);
+            return ((Float)data).toString(); //String.valueOf((Float)data);
         }
         if(data instanceof Double) {
             return String.valueOf((Double)data);
