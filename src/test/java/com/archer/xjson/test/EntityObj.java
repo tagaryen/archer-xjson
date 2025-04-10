@@ -11,6 +11,9 @@ public class EntityObj {
 	private Double income;
 	
 	private List<String> children;
+	
+	
+	private TypeEnum type;
 
 	
 	
@@ -19,6 +22,7 @@ public class EntityObj {
 		this.age = 18;
 		this.income = 72687132.222D;
 		this.children = Arrays.asList("儿子1", "儿子2");
+		this.type = TypeEnum.TYPE0;
 	}
 
 	public String getName() {
@@ -51,6 +55,14 @@ public class EntityObj {
 
 	public void setChildren(List<String> children) {
 		this.children = children;
+	}
+
+	public TypeEnum getType() {
+		return type;
+	}
+
+	public void setType(TypeEnum type) {
+		this.type = type;
 	}
 	
 	

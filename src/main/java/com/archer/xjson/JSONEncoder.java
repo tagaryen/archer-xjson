@@ -166,6 +166,12 @@ class JSONEncoder {
         if(data instanceof Collection) {
         	return formatCollection((Collection<?>)data, tabCount, isVal, stuff);
         }
+        if(data.getClass().isEnum()) {
+        	if(isVal) {
+        		return QUOTE + ((Enum<?>)data).name() + QUOTE;
+        	}
+        	return ((Enum<?>)data).name();
+        }
         if(data instanceof Map) {
             try {
             	return formatMap((Map<String, ?>)data, tabCount, isVal, stuff);

@@ -162,6 +162,8 @@ class JSONReflect {
 			}
 			if(cls.isPrimitive()) {
 				return reflectToPrimitive(cls, val);
+			} else if(cls.isEnum()) {
+				return reflectToEnum((Class<Enum<?>>)cls, (String)val);
 			} else {
 				return reflectToPopularClass(cls, val);
 			}
@@ -369,6 +371,16 @@ class JSONReflect {
 		}
 		throw new XJSONException("unknown primitive type '" 
 				+ cls.getName() + "'");
+	}
+	
+	static Object reflectToEnum(Class<Enum<?>> cls,  String val) {
+		for(Enum<?> f:  cls.getEnumConstants()) {
+			if(f.name().equals(val)) {
+				return f;
+			}
+		}
+		throw new XJSONException("unknown enum type '" 
+				+ val + "' in '" + cls.getName() + "'");
 	}
 	
 	@SuppressWarnings("unchecked")

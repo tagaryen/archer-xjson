@@ -1,6 +1,9 @@
 package com.archer.xjson.test;
 
+import java.lang.reflect.Field;
+
 import com.archer.xjson.XJSON;
+import com.archer.xjson.XJSONStatic;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 public class JsonCompare {
@@ -37,11 +40,17 @@ public class JsonCompare {
 	}
 	
 	
+	@SuppressWarnings("unchecked")
 	public static void main(String args[]) {
-		Double a = 1271267643.543D;
-		System.out.println(a.toString());
-		objectMapperTest();
-		xjsonTest();
+//		Double a = 1271267643.543D;
+//		System.out.println(a.toString());
+//		objectMapperTest();
+//		xjsonTest();
+		EntityObj en = new EntityObj();
+		String json = XJSONStatic.stringify(en);
+		json = json.replace("TYPE0", "TYPE");
+		EntityObj en1 = XJSONStatic.parse(json, EntityObj.class);
+		System.out.println(json);
 	}
 	
 }

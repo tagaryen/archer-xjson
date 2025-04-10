@@ -35,14 +35,14 @@ public class XJSONException extends RuntimeException {
 	static String getErrorMsg(Field f, Object val) {
 		String msg = "can not set ";
 		if(val instanceof LinkedHashMap) {
-			msg += "Object to " + f.getName() + 
-					"("+f.getDeclaringClass().getName()+")";
+			msg += "Object to " + 
+					"("+f.getDeclaringClass().getName()+"."+f.getName()+")";
 		} else if(val instanceof String) {
-			msg += "'" + val + "' to " + f.getName() + 
-					"("+f.getDeclaringClass().getName()+")";
+			msg += "'" + val + "' to " +
+					"("+f.getDeclaringClass().getName()+"."+f.getName()+")";
 		} else {
-			msg += val + " to " + f.getName() + 
-					"("+f.getClass().getName()+")";
+			msg += val + " to " +  
+					"("+f.getClass().getName()+"."+f.getName()+")";
 		}
 		return msg;
 	}
