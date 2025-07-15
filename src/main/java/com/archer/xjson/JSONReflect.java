@@ -535,7 +535,7 @@ class JSONReflect {
 	}
 	
 	void reflectToSupperCls(Class<?> superCls, TreeMap<String, Object> val, Type[] childTypes, int oldCount, TreeSet<String> fieldNameSet, Object instance) {
-		if(Object.class.equals(superCls)) {
+		if(superCls == null || Object.class.equals(superCls)) {
 			return ;
 		}
 		Field[] fields = JSONCache.get(superCls);
