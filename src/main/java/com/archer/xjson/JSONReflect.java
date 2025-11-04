@@ -618,26 +618,26 @@ class JSONReflect {
 			return xjsonConstructor.newInstance();
 		}
 		Constructor<?>[] constructors = cls.getConstructors();
-		for(Constructor<?> constructor : constructors) {
-			Object[] params = null;
-			if(constructor.getParameterCount() == 0) {
-				params = new Object[0];
-			} else if(cls.isMemberClass() && constructor.getParameterCount() == 1) { //non-static inner class
-				params = new Object[1];
-			}
-			if(params != null) {
-				JSONCache.saveConstructor(cls, constructor, params);
-				try {
-					constructor.setAccessible(true);
-					return constructor.newInstance(params);
-				} catch (Exception e) {
-					throw new RuntimeException("can not construct class '" +
-							cls.getName() + "'", e);
-				}
+		if(constructors.length < 1) {
+			throw new XJSONException("can not found constructor in class '" +
+					cls.getName() + "'");
+		}
+		Constructor<?> constructor = constructors[0];
+		int paramCount = constructors[0].getParameterCount();
+		for(int i = 1; i < constructors.length; i++) {
+			if(constructors[i].getParameterCount() < paramCount) {
+				paramCount = constructors[i].getParameterCount();
+				constructor = constructors[i];
 			}
 		}
-		throw new XJSONException(
-				"no arguments constructor is required with class '" 
-				+ cls.getName() + "'"); 
+		constructor.setAccessible(true);
+		Object[] params = new Object[paramCount];
+		JSONCache.saveConstructor(cls, constructor, params);
+		try {
+			return constructor.newInstance(params);
+		} catch (Exception e) {
+			throw new XJSONException("can not construct class '" +
+					cls.getName() + "'", e);
+		}
 	}
 }

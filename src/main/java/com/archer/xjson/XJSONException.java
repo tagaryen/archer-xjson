@@ -18,6 +18,11 @@ public class XJSONException extends RuntimeException {
     }
     
 
+    public XJSONException(String msg, Throwable e) {
+    	super(msg, e);
+    }
+    
+
 	static String getErrorMsg(String name, Class<?> clazz, boolean missing) {
 		if(missing) {
 			return "filed '"+name +"' requires a value in " + 

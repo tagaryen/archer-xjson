@@ -15,15 +15,17 @@ public class EntityObj {
 	
 	private TypeEnum type;
 
-	
-	
-	public EntityObj() {
-		this.name = "你好";
-		this.age = 18;
-		this.income = 72687132.222D;
-		this.children = Arrays.asList("儿子1", "儿子2");
-		this.type = TypeEnum.TYPE0;
+	public EntityObj(String name, Integer age) {
+		this.name= name;
 	}
+	
+//	public EntityObj() {
+//		this.name = "你好";
+//		this.age = 18;
+//		this.income = 72687132.222D;
+//		this.children = Arrays.asList("儿子1", "儿子2");
+//		this.type = TypeEnum.TYPE0;
+//	}
 
 	public String getName() {
 		return name;

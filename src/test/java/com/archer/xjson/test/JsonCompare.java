@@ -39,18 +39,24 @@ public class JsonCompare {
 		System.out.println("xjson cost = " + (end - start) + "ms");
 	}
 	
-	
-	@SuppressWarnings("unchecked")
 	public static void main(String args[]) {
-//		Double a = 1271267643.543D;
-//		System.out.println(a.toString());
-//		objectMapperTest();
-//		xjsonTest();
-		EntityObj en = new EntityObj();
-		String json = XJSONStatic.stringify(en);
-		json = json.replace("TYPE0", "TYPE");
-		EntityObj en1 = XJSONStatic.parse(json, EntityObj.class);
-		System.out.println(json);
+
+		String json = "{\"name\":\"你好\",\"age\":18,\"income\":7.2687132222E7,\"children\":[\"儿子1\",\"儿子2\"]}";
+
+		EntityObj obj0 = XJSONStatic.parse(json, EntityObj.class);
+		System.out.println(obj0.getName());
+		
+
+		Obj ob = XJSONStatic.parse(json, Obj.class);
+		System.out.println(ob.getName());
+		
+		ObjectMapper om = new ObjectMapper();
+		try {
+			EntityObj obj1 = om.readValue(json, EntityObj.class);
+			System.out.println(obj1.getName());
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
 	}
 	
 }
