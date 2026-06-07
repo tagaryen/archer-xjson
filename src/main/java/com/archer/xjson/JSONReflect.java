@@ -18,7 +18,6 @@ import java.util.Arrays;
 import java.util.Base64;
 import java.util.Collection;
 import java.util.Date;
-import java.util.TreeMap;
 import java.util.LinkedHashSet;
 import java.util.ArrayList;
 import java.util.List;
@@ -101,19 +100,19 @@ class JSONReflect {
 	}
 
 	@SuppressWarnings("unchecked")
-	<T> T reflectOneClass(TreeMap<String, Object> obj, Class<T> clazz) 
+	<T> T reflectOneClass(XMap<String, Object> obj, Class<T> clazz) 
 			throws XJSONException {
 		return (T) fromJavaType(clazz, obj);
 	}
 	
 	@SuppressWarnings("unchecked")
-	<T> T reflectOneClass(TreeMap<String, Object> obj, JavaTypeRef<T> ref) 
+	<T> T reflectOneClass(XMap<String, Object> obj, JavaTypeRef<T> ref) 
 			throws XJSONException {
 		return (T) fromJavaType(ref.getJavaType(), obj);
 	}
 	
 	@SuppressWarnings("unchecked")
-	<T> T reflectOneClass(TreeMap<String, Object> obj, Type type) 
+	<T> T reflectOneClass(XMap<String, Object> obj, Type type) 
 			throws XJSONException {
 		return (T) fromJavaType(type, obj);
 	}
@@ -176,9 +175,9 @@ class JSONReflect {
 			}
 			if(Map.class.isAssignableFrom(cls)) {
 				return reflectMap(cls, (ParameterizedType)javaType, 
-						(TreeMap<String, Object>) val);
+						(XMap<String, Object>) val);
 			}
-			return reflectUnknownClass(cls, (TreeMap<String, Object>)val, 
+			return reflectUnknownClass(cls, (XMap<String, Object>)val, 
 					pType.getActualTypeArguments());
 		}
 		return null;
@@ -240,11 +239,11 @@ class JSONReflect {
 
 	@SuppressWarnings("unchecked")
 	Map<Object, Object> reflectMap(Class<?> cls, 
-			ParameterizedType javaType, TreeMap<String, Object> val) 
+			ParameterizedType javaType, XMap<String, Object> val) 
 			throws XJSONException {
 		Map<Object, Object> instance;
 		if(cls.isInterface()) {
-			instance = new TreeMap<>();
+			instance = new XMap<>();
 		} else {
 			try {
 				instance = (Map<Object, Object>) newInstance(cls);
@@ -456,13 +455,13 @@ class JSONReflect {
 						((String) val)+"' to BigDecimal");
 			}
 		}
-		if(val instanceof TreeMap) {
-			return reflectUnknownClass(cls, (TreeMap<String, Object>) val, null);
+		if(val instanceof XMap) {
+			return reflectUnknownClass(cls, (XMap<String, Object>) val, null);
 		}
 		return val;
 	}
 	
-	Object reflectUnknownClass(Class<?> cls, TreeMap<String, Object> val, Type[] childTypes) 
+	Object reflectUnknownClass(Class<?> cls, XMap<String, Object> val, Type[] childTypes) 
 			throws XJSONException {
 		Object instance = newInstance(cls);
 		Field[] fields = JSONCache.get(cls);
@@ -505,9 +504,10 @@ class JSONReflect {
 					f.setAccessible(true);
 					f.set(instance, fromJavaType(ft, fieldVal));
 				} catch(Exception e) {
-					e.printStackTrace();
-					throw new XJSONException(
-							XJSONException.getErrorMsg(f, val.get(f.getName())));
+					if(strictClassMode) {
+						throw new XJSONException(
+								XJSONException.getErrorMsg(f, val.get(f.getName())));
+					}
 				}
 			} else {
 				if(strictClassMode) {
@@ -534,7 +534,7 @@ class JSONReflect {
 		return instance;
 	}
 	
-	void reflectToSupperCls(Class<?> superCls, TreeMap<String, Object> val, Type[] childTypes, int oldCount, TreeSet<String> fieldNameSet, Object instance) {
+	void reflectToSupperCls(Class<?> superCls, XMap<String, Object> val, Type[] childTypes, int oldCount, TreeSet<String> fieldNameSet, Object instance) {
 		if(superCls == null || Object.class.equals(superCls)) {
 			return ;
 		}
@@ -577,9 +577,10 @@ class JSONReflect {
 					f.setAccessible(true);
 					f.set(instance, fromJavaType(ft, fieldVal));
 				} catch(Exception e) {
-					e.printStackTrace();
-					throw new XJSONException(
-							XJSONException.getErrorMsg(f, val.get(f.getName())));
+					if(strictClassMode) {
+						throw new XJSONException(
+								XJSONException.getErrorMsg(f, val.get(f.getName())));
+					}
 				}
 			} else {
 				if(strictClassMode) {

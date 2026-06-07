@@ -2,7 +2,6 @@ package com.archer.xjson;
 
 import java.lang.reflect.Type;
 import java.util.Arrays;
-import java.util.TreeMap;
 import java.util.ArrayList;
 
 class JSONDecoder {	
@@ -46,7 +45,7 @@ class JSONDecoder {
 	static final short A_VAL_E = 5;
 	static final short A_E = 6;
 	
-	static int parseOneObj(char[] chars, int offset, TreeMap<String, Object> ret) 
+	static int parseOneObj(char[] chars, int offset, XMap<String, Object> ret) 
 			throws XJSONException {
 		int keyL = 0, keyR = 0, valL = 0, valR = 0;
 		short state = K_DEFAULT;
@@ -186,7 +185,7 @@ class JSONDecoder {
 				if(objVal) {
 					String key = new String(
 							Arrays.copyOfRange(chars, keyL, keyR));
-					TreeMap<String, Object> child = new TreeMap<>();
+					XMap<String, Object> child = new XMap<>(24);
 					int index = parseOneObj(chars, valL, child);
 					ret.put(key, child);
 					i = index - 1;
@@ -416,7 +415,7 @@ class JSONDecoder {
 				continue;
 			}
 			if(A_OBJ_S == state) {
-				TreeMap<String, Object> child = new TreeMap<>();
+				XMap<String, Object> child = new XMap<>(24);
 				int index = parseOneObj(chars, valL, child);
 				ret.add(child);
 				i = index - 1;
@@ -470,9 +469,9 @@ class JSONDecoder {
 		return sb.toString();
 	}
 
-	static TreeMap<String, Object> parseToMap(String json) 
+	static XMap<String, Object> parseToMap(String json) 
 			throws XJSONException {
-		TreeMap<String, Object> ret = new TreeMap<>();
+		XMap<String, Object> ret = new XMap<>(24);
 		parseOneObj(json.toCharArray(), 0, ret);
 		return ret;
 	}
@@ -486,18 +485,18 @@ class JSONDecoder {
 	
 	static <T> T parseToClass(String json, Class<T> clazz, JSONReflect reflector) 
 			throws XJSONException {
-		TreeMap<String, Object> obj = parseToMap(json);
+		XMap<String, Object> obj = parseToMap(json);
 		return reflector.reflectOneClass(obj, clazz);
 	}
 	
 	static <T> T parseToClass(String json, JavaTypeRef<T> ref, JSONReflect reflector) {
-		TreeMap<String, Object> obj = parseToMap(json);
+		XMap<String, Object> obj = parseToMap(json);
 		return reflector.reflectOneClass(obj, ref);
 	}
 	
 	static <T> T parseToClass(String json, Type type, JSONReflect reflector) 
 			throws XJSONException {
-		TreeMap<String, Object> obj = parseToMap(json);
+		XMap<String, Object> obj = parseToMap(json);
 		return reflector.reflectOneClass(obj, type);
 	}
 	
