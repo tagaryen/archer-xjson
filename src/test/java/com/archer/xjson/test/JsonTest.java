@@ -3,8 +3,9 @@ package com.archer.xjson.test;
 import com.archer.xjson.XJSON;
 import com.archer.xjson.XJSONStatic;
 import com.archer.xjson.asm.XNJSON;
-// import com.fasterxml.jackson.core.type.TypeReference;
-// import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -19,21 +20,23 @@ public class JsonTest {
 
     static XNJSON xnjson = new XNJSON();
 
-    // static ObjectMapper om = new ObjectMapper();
+    // large.json 部分元素带有 LogEntry 未声明的扩展字段（如 query），忽略未知字段以与 XJSON/XNJSON 行为对齐
+    static ObjectMapper om = new ObjectMapper()
+            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
     /** 防止 JIT 把结果判为未使用而优化的接收点 */
     static volatile Object sink;
 
     /** 序列化基准用的实体源数据，首次访问时载入一次（不计时） */
-    static List<HD3D> hd3dSource;
+    static List<LogEntry> logSource;
 
 
     static String readJson() throws IOException {
-        return new String(Files.readAllBytes(Paths.get("E:/projects/hd3D.json")), StandardCharsets.UTF_8);
+        return new String(Files.readAllBytes(Paths.get("E:/projects/large.json")), StandardCharsets.UTF_8);
     }
 
     static byte[] readJsonBytes() throws IOException {
-        return Files.readAllBytes(Paths.get("E:/projects/hd3D.json"));
+        return Files.readAllBytes(Paths.get("E:/projects/large.json"));
     }
 
 
@@ -55,44 +58,42 @@ public class JsonTest {
         xnjson.parseList(readJsonBytes());
     }
 
-    // static void OMTest() throws IOException {
-    //     om.readValue(readJson(), new TypeReference<List<Map<String, Object>>>() {});
-    // }
+    static void OMTest() throws IOException {
+        om.readValue(readJson(), new TypeReference<List<Map<String, Object>>>() {});
+    }
 
-    // ==================== 实体强类型：XNJSON 走 ASM per-class 反/序列化器 ====================
-
-    static List<HD3D> loadSource() throws Exception {
-        if (hd3dSource == null) {
-            hd3dSource = XJSONStatic.parseList(readJson(), HD3D.class);
+    static List<LogEntry> loadSource() throws Exception {
+        if (logSource == null) {
+            logSource = XJSONStatic.parseList(readJson(), LogEntry.class);
         }
-        return hd3dSource;
+        return logSource;
     }
 
     static void XNEntityParseTest() throws Exception {
-        sink = xnjson.parseList(readJson(), HD3D.class);
+        sink = xnjson.parseList(readJson(), LogEntry.class);
     }
 
     static void XEntityParseTest() throws Exception {
-        sink = xjson.parseList(readJson(), HD3D.class);
+        sink = xjson.parseList(readJson(), LogEntry.class);
     }
 
-    // static void OMEntityParseTest() throws Exception {
-    //     sink = om.readValue(readJson(), new TypeReference<List<HD3D>>() {});
-    // }
+    static void OMEntityParseTest() throws Exception {
+        sink = om.readValue(readJson(), new TypeReference<List<LogEntry>>() {});
+    }
 
     /** XJSON byte[] 直扫实体解析 */
     static void XEntityBytesParseTest() throws Exception {
-        sink = xjson.parseList(readJsonBytes(), HD3D.class);
+        sink = xjson.parseList(readJsonBytes(), LogEntry.class);
     }
 
     /** byte[] 零拷贝串行实体解析 */
     static void XNBytesEntityParseTest() throws Exception {
-        sink = xnjson.parseList(readJsonBytes(), HD3D.class);
+        sink = xnjson.parseList(readJsonBytes(), LogEntry.class);
     }
 
     /** SWAR 行边界索引 + 并行分块实体解析 */
     static void XNParallelEntityParseTest() throws Exception {
-        sink = xnjson.parseListParallel(readJsonBytes(), HD3D.class);
+        sink = xnjson.parseListParallel(readJsonBytes(), LogEntry.class);
     }
 
     static void XNStringifyTest() throws Exception {
@@ -103,9 +104,9 @@ public class JsonTest {
         sink = xjson.stringify(loadSource());
     }
 
-    // static void OMStringifyTest() throws Exception {
-    //     sink = om.writeValueAsString(loadSource());
-    // }
+    static void OMStringifyTest() throws Exception {
+        sink = om.writeValueAsString(loadSource());
+    }
 
     /**
      * 性能与内存基准：预热 warmup 轮后，执行 rounds 轮
@@ -161,13 +162,13 @@ public class JsonTest {
             int warmup = 3;
             int rounds = 10;
 
-            // benchmark("OMTest", JsonTest::OMTest, warmup, rounds);
+            benchmark("OMTest", JsonTest::OMTest, warmup, rounds);
             benchmark("XJsonTest", JsonTest::XJsonTest, warmup, rounds);
             benchmark("XJsonBytesTest", JsonTest::XJsonBytesTest, warmup, rounds);
             benchmark("XNJsonTest", JsonTest::XNJsonTest, warmup, rounds);
             benchmark("XNJsonBytesTest", JsonTest::XNJsonBytesTest, warmup, rounds);
 
-            // benchmark("OMEntityParseTest", JsonTest::OMEntityParseTest, warmup, rounds);
+            benchmark("OMEntityParseTest", JsonTest::OMEntityParseTest, warmup, rounds);
             benchmark("XEntityParseTest", JsonTest::XEntityParseTest, warmup, rounds);
             benchmark("XEntityBytesParseTest", JsonTest::XEntityBytesParseTest, warmup, rounds);
             benchmark("XNEntityParseTest", JsonTest::XNEntityParseTest, warmup, rounds);
@@ -176,7 +177,7 @@ public class JsonTest {
 
             benchmark("XNStringifyTest", JsonTest::XNStringifyTest, warmup, rounds);
             benchmark("XStringifyTest", JsonTest::XStringifyTest, warmup, rounds);
-            // benchmark("OMStringifyTest", JsonTest::OMStringifyTest, warmup, rounds);
+            benchmark("OMStringifyTest", JsonTest::OMStringifyTest, warmup, rounds);
         } catch (Exception e) {
             e.printStackTrace();
         }
