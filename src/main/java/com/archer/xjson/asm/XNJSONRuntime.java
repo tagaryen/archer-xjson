@@ -100,10 +100,40 @@ public class XNJSONRuntime {
 		};
 	}
 
+	/** 实体读缓存：filler + KeyTable 单次 CHM 查找，避免 readBean 每 bean 双查表 */
+	private static final ConcurrentHashMap<Class<?>, BeanReader> BEANS = new ConcurrentHashMap<>();
+
+	private static final class BeanReader {
+		final XNFieldFiller filler;
+		final XNReader.KeyTable keys;
+
+		BeanReader(XNFieldFiller filler, XNReader.KeyTable keys) {
+			this.filler = filler;
+			this.keys = keys;
+		}
+	}
+
+	private static BeanReader beanReader(Class<?> cls) {
+		BeanReader br = BEANS.get(cls);
+		if (null == br) {
+			java.util.List<Field> fields = fieldsOf(cls);
+			String[] names = new String[fields.size()];
+			for (int i = 0; i < fields.size(); i++) {
+				names[i] = fields.get(i).getName();
+			}
+			br = new BeanReader(filler(cls), new XNReader.KeyTable(names));
+			BeanReader existing = BEANS.putIfAbsent(cls, br);
+			if (null != existing) {
+				br = existing;
+			}
+		}
+		return br;
+	}
+
 	/** 从流中读取一个实体对象（根为对象），边扫边写、不构建中间树 */
 	public static Object readBean(XNReader r, Class<?> cls) {
-		XNFieldFiller filler = filler(cls);
-		Object bean = filler.create();
+		BeanReader br = beanReader(cls);
+		Object bean = br.filler.create();
 		r.skipWs();
 		r.expectChar('{');
 		while (true) {
@@ -111,11 +141,11 @@ public class XNJSONRuntime {
 			if (r.eatChar('}')) {
 				break;
 			}
-			String key = r.readKey();
-			r.skipWs();
-			r.expectChar(':');
-			r.skipWs();
-			if (!filler.fill(bean, key, r)) {
+			// 位置已在 '"'：KeyTable 直匹配，免 readKey 内部重复 skipWs、免通用 keyPool 探测
+			String key = r.readKeyIn(br.keys);
+			// 融合入口：扫空白 + 吃冒号；值前空白由标量读取/skipValue 内部 skipWs 兜底
+			r.skipWsExpect(':');
+			if (!br.filler.fill(bean, key, r)) {
 				r.skipValue();
 			}
 			r.skipWs();

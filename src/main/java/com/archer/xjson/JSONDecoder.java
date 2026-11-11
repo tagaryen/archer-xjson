@@ -1121,7 +1121,8 @@ class JSONDecoder {
 	 */
 	private Object parseBean(Class<?> clazz, Type[] childTypes) {
 		Object instance = JSONReflect.newInstance(clazz);
-		Field[] fields = JSONCache.getMeta(clazz).fields;
+		ClassMeta meta = JSONCache.getMeta(clazz);
+		Field[] fields = meta.fields;
 		boolean strictJson = reflector.strictJsonMode;
 		boolean strictClass = reflector.strictClassMode;
 		ArrayList<String> seenKeys = strictJson ? new ArrayList<>() : null;
@@ -1152,7 +1153,8 @@ class JSONDecoder {
 			pos++;
 			skipWs();
 
-			int fi = findField(fields, key);
+			Integer fiBox = meta.index.get(key);
+			int fi = null == fiBox ? -1 : fiBox;
 			if(fi >= 0) {
 				Field f = fields[fi];
 				Type ft = resolveFieldType(f, childTypes);
@@ -1193,7 +1195,7 @@ class JSONDecoder {
 
 		if(strictJson) {
 			for(String k : seenKeys) {
-				if(findField(fields, k) < 0) {
+				if(!meta.index.containsKey(k)) {
 					throw new XJSONException(
 							XJSONException.getErrorMsg(k, clazz, false));
 				}
@@ -1208,16 +1210,6 @@ class JSONDecoder {
 			}
 		}
 		return instance;
-	}
-
-	/** 返回字段下标，未找到返回 -1（字段数通常 <20，线性扫描即可） */
-	private static int findField(Field[] fields, String name) {
-		for(int i = 0; i < fields.length; i++) {
-			if(fields[i].getName().equals(name)) {
-				return i;
-			}
-		}
-		return -1;
 	}
 
 	/** 泛型字段解析：TypeVariable 按声明类的类型变量名匹配 childTypes（对齐 reflectFields） */

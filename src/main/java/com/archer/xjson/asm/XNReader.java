@@ -20,7 +20,7 @@ public class XNReader {
 	private static final int VALUE_INTERN_MAX_LEN = 32;
 	private static final int VALUE_INTERN_LIMIT = 4096;
 
-	// ---- SWAR 常量（仅 byte 模式使用）----
+	// ---- SWAR 常量（byte 模式按 8 字节打包）----
 	private static final long LO_BITS = 0x0101010101010101L;
 	private static final long HI_BITS = 0x8080808080808080L;
 	private static final long QUOTE_BCAST = '"' * LO_BITS;
@@ -147,6 +147,126 @@ public class XNReader {
 		pos = quote + 1;
 		return null != data ? keyPoolB().intern(data, start, quote)
 				: keyPoolT().intern(text, start, quote);
+	}
+
+	/**
+	 * 实体路径专用 key 读取：按已知字段名表（KeyTable）区间直接匹配，
+	 * 命中返回字段名常量全篇复用；未知 key materialize 新 String，均不经过通用 keyPool。
+	 * 调用前需已 skipWs（readBean 在 '}' 判断之后调用，位置必在 '"'）。
+	 */
+	public String readKeyIn(KeyTable kt) {
+		if (pos >= end || at(pos) != '"') {
+			throw error("expect string");
+		}
+		int start = pos + 1;
+		int quote = scanQuoteOrEscape(start);
+		if (quote < 0) {
+			throw error("unterminated string");
+		}
+		if (at(quote) == '\\') {
+			// 实体字段名不含转义，兜底 decode 即可（filler equals 按内容匹配）
+			return readStringEscaped(start, quote);
+		}
+		pos = quote + 1;
+		String hit = kt.match(data, text, start, quote);
+		return null != hit ? hit : materialize(start, quote);
+	}
+
+	/**
+	 * skipWs + expectChar 融合：readBean 冒号间隙单次入口。
+	 * 值前空白由后续标量读取（readLong/readDouble/readStringValue/skipValue 等）内部 skipWs 兜底。
+	 */
+	public void skipWsExpect(char expected) {
+		skipWs();
+		if (pos >= end || at(pos) != expected) {
+			throw error("expect '" + expected + "'");
+		}
+		pos++;
+	}
+
+	/**
+	 * 实体已知字段名匹配表（开放寻址）：按 String.hashCode 兼容 hash 探测 + 区间逐字符比对，
+	 * 命中返回 names 常量。表容量按字段数 2 倍起步，远小于通用 keyPool，探测热点稳定驻留 L1。
+	 */
+	public static final class KeyTable {
+		private final String[] names;
+		private final int[] hashes;
+		private final int[] slots; // names 下标+1，0 为空槽
+
+		public KeyTable(String[] names) {
+			this.names = names;
+			this.hashes = new int[names.length];
+			int cap = 16;
+			while (cap < names.length * 2) {
+				cap <<= 1;
+			}
+			this.slots = new int[cap];
+			int mask = cap - 1;
+			for (int i = 0; i < names.length; i++) {
+				int h = names[i].hashCode();
+				hashes[i] = h;
+				int s = (h ^ (h >>> 16)) & mask;
+				while (0 != slots[s]) {
+					s = (s + 1) & mask;
+				}
+				slots[s] = i + 1;
+			}
+		}
+
+		/** 区间匹配字段名：命中返回常量，未命中返回 null。byte 模式遇非 ASCII 直接放弃（调用方 materialize 后由 filler equals 按内容兜底） */
+		String match(byte[] data, String text, int start, int end) {
+			int len = end - start;
+			int h = 0;
+			if (null != data) {
+				int high = 0;
+				for (int i = start; i < end; i++) {
+					int b = data[i] & 0xFF;
+					high |= b;
+					h = 31 * h + b;
+				}
+				if (high >= 0x80) {
+					return null;
+				}
+				int mask = slots.length - 1;
+				int s = (h ^ (h >>> 16)) & mask;
+				while (true) {
+					int slot = slots[s];
+					if (0 == slot) {
+						return null;
+					}
+					String name = names[slot - 1];
+					if (hashes[slot - 1] == h && name.length() == len && regionEqualsBytes(name, data, start)) {
+						return name;
+					}
+					s = (s + 1) & mask;
+				}
+			}
+			for (int i = start; i < end; i++) {
+				h = 31 * h + text.charAt(i);
+			}
+			int mask = slots.length - 1;
+			int s = (h ^ (h >>> 16)) & mask;
+			while (true) {
+				int slot = slots[s];
+				if (0 == slot) {
+					return null;
+				}
+				String name = names[slot - 1];
+				if (hashes[slot - 1] == h && name.length() == len && name.regionMatches(0, text, start, len)) {
+					return name;
+				}
+				s = (s + 1) & mask;
+			}
+		}
+
+		private static boolean regionEqualsBytes(String name, byte[] d, int start) {
+			for (int i = 0; i < name.length(); i++) {
+				if (name.charAt(i) != (char) (d[start + i] & 0xFF)) {
+					return false;
+				}
+			}
+			return true;
+		}
 	}
 
 	/** 读取字符串值（可能是 null）：短值去重复用，长值直接 materialize */
@@ -913,10 +1033,16 @@ public class XNReader {
 	 * 对 ASCII 与非 ASCII key 均正确，全程不产生临时 String。
 	 */
 	static final class BytePool {
+		/** 池满后的 miss 采样窗口：窗口内命中率 <25% 判定去重纯赔本，熔断后直通 materialize */
+		private static final int ADAPT_SAMPLE = 2048;
+
 		private String[] strs;
 		private byte[][] bytes;
 		private int size;
 		private final int maxSize;
+		private int hits;
+		private int misses;
+		private boolean off;
 
 		BytePool(int capacity, int maxSize) {
 			int cap = 16;
@@ -927,6 +1053,9 @@ public class XNReader {
 		}
 
 		String intern(byte[] d, int start, int end) {
+			if (off) {
+				return new String(d, start, end - start, StandardCharsets.UTF_8);
+			}
 			int h = 0;
 			for (int i = start; i < end; i++) {
 				h = 31 * h + (d[i] & 0xFF);
@@ -940,11 +1069,16 @@ public class XNReader {
 					String str = new String(d, start, keyLen, StandardCharsets.UTF_8);
 					if (maxSize < 0 || size < maxSize) {
 						put(str, copyOf(d, start, keyLen), h);
+					} else {
+						onFullMiss();
 					}
 					return str;
 				}
 				byte[] pb = bytes[i];
 				if (pb.length == keyLen && bytesEqual(pb, d, start, keyLen)) {
+					if (maxSize >= 0 && size >= maxSize) {
+						hits++;
+					}
 					return s;
 				}
 				i = (i + 1) & mask;
@@ -953,6 +1087,7 @@ public class XNReader {
 
 		String intern(String str) {
 			if (null == str) return null;
+			if (off) return str;
 			byte[] enc = str.getBytes(StandardCharsets.UTF_8);
 			int h = 0;
 			for (byte b : enc) {
@@ -965,6 +1100,8 @@ public class XNReader {
 				if (null == s) {
 					if (maxSize < 0 || size < maxSize) {
 						put(str, enc, h);
+					} else {
+						onFullMiss();
 					}
 					return str;
 				}
@@ -973,6 +1110,16 @@ public class XNReader {
 					return s;
 				}
 				i = (i + 1) & mask;
+			}
+		}
+
+		private void onFullMiss() {
+			if (++misses >= ADAPT_SAMPLE) {
+				if (hits * 4 < misses) {
+					off = true;
+				}
+				hits = 0;
+				misses = 0;
 			}
 		}
 
@@ -1040,10 +1187,16 @@ public class XNReader {
 	 * 逐字符相等才复用，全程不产生临时 String。
 	 */
 	static final class StrPool {
+		/** 池满后的 miss 采样窗口：窗口内命中率 <25% 判定去重纯赔本，熔断后直通 materialize */
+		private static final int ADAPT_SAMPLE = 2048;
+
 		private String[] keys;
 		private int[] hashes;
 		private int size;
 		private final int maxSize;
+		private int hits;
+		private int misses;
+		private boolean off;
 
 		StrPool(int capacity, int maxSize) {
 			int cap = 16;
@@ -1055,6 +1208,9 @@ public class XNReader {
 
 		/** 基于源字符串区间 [start, end) 的零分配 intern */
 		String intern(String src, int start, int end) {
+			if (off) {
+				return src.substring(start, end);
+			}
 			int h = 0;
 			for (int i = start; i < end; i++) {
 				h = 31 * h + src.charAt(i);
@@ -1068,10 +1224,15 @@ public class XNReader {
 					String s = src.substring(start, end);
 					if (maxSize < 0 || size < maxSize) {
 						put(s, h);
+					} else {
+						onFullMiss();
 					}
 					return s;
 				}
 				if (hashes[i] == h && k.length() == len && regionMatches(k, src, start, len)) {
+					if (maxSize >= 0 && size >= maxSize) {
+						hits++;
+					}
 					return k;
 				}
 				i = (i + 1) & mask;
@@ -1081,6 +1242,7 @@ public class XNReader {
 		/** 整串 intern（转义字符串等已 materialize 的场景） */
 		String intern(String str) {
 			if (null == str) return null;
+			if (off) return str;
 			int h = str.hashCode();
 			int mask = keys.length - 1;
 			int i = (h ^ (h >>> 16)) & mask;
@@ -1089,6 +1251,8 @@ public class XNReader {
 				if (null == k) {
 					if (maxSize < 0 || size < maxSize) {
 						put(str, h);
+					} else {
+						onFullMiss();
 					}
 					return str;
 				}
@@ -1096,6 +1260,16 @@ public class XNReader {
 					return k;
 				}
 				i = (i + 1) & mask;
+			}
+		}
+
+		private void onFullMiss() {
+			if (++misses >= ADAPT_SAMPLE) {
+				if (hits * 4 < misses) {
+					off = true;
+				}
+				hits = 0;
+				misses = 0;
 			}
 		}
 
