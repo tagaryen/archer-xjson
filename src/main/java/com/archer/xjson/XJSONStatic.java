@@ -23,6 +23,58 @@ public class XJSONStatic {
 		}
 		return JSONDecoder.parseToList(json);
 	}
+
+	public static Map<String, Object> parse(byte[] json) throws XJSONException {
+		if(null == json || json.length == 0) {
+			throw new XJSONException("input json bytes can not be null or empty.");
+		}
+		return JSONDecoder.parseToMap(json);
+	}
+
+	public static List<Object> parseList(byte[] json) throws XJSONException {
+		if(null == json || json.length == 0) {
+			throw new XJSONException("input json bytes can not be null or empty.");
+		}
+		return JSONDecoder.parseToList(json);
+	}
+
+	public static <T> T parse(byte[] json, Class<T> clazz) throws XJSONException {
+		if(null == json || json.length == 0) {
+			throw new XJSONException("input json bytes can not be null or empty.");
+		}
+		return JSONDecoder.parseToClass(json, clazz, reflector);
+	}
+	public static <T> T parse(byte[] json, Type type) throws XJSONException {
+		if(null == json || json.length == 0) {
+			throw new XJSONException("input json bytes can not be null or empty.");
+		}
+		return JSONDecoder.parseToClass(json, type, reflector);
+	}
+	public static <T> T parse(byte[] json, JavaTypeRef<T> ref) throws XJSONException {
+		if(null == json || json.length == 0) {
+			throw new XJSONException("input json bytes can not be null or empty.");
+		}
+		return JSONDecoder.parseToClass(json, ref, reflector);
+	}
+
+	public static <T> List<T> parseList(byte[] json, Class<T> clazz) throws XJSONException {
+		if(null == json || json.length == 0) {
+			throw new XJSONException("input json bytes can not be null or empty.");
+		}
+		return JSONDecoder.parseToClassList(json, clazz, reflector);
+	}
+	public static <T> List<T> parseList(byte[] json, JavaTypeRef<T> ref) throws XJSONException {
+		if(null == json || json.length == 0) {
+			throw new XJSONException("input json bytes can not be null or empty.");
+		}
+		return JSONDecoder.parseToClassList(json, ref, reflector);
+	}
+	public static <T> List<T> parseList(byte[] json, Type type) throws XJSONException {
+		if(null == json || json.length == 0) {
+			throw new XJSONException("input json bytes can not be null or empty.");
+		}
+		return JSONDecoder.parseToClassList(json, type, reflector);
+	}
 	
 	public static <T> T parse(String json, Class<T> clazz) throws XJSONException {
 		if(null == json || json.trim().isEmpty()) {

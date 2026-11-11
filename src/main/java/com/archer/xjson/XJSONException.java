@@ -23,7 +23,7 @@ public class XJSONException extends RuntimeException {
     }
     
 
-	static String getErrorMsg(String name, Class<?> clazz, boolean missing) {
+	public static String getErrorMsg(String name, Class<?> clazz, boolean missing) {
 		if(missing) {
 			return "filed '"+name +"' requires a value in " + 
 					clazz.getName() + " with strict class mode";
@@ -33,11 +33,11 @@ public class XJSONException extends RuntimeException {
 		}
 	}
 	
-	static String getErrorMsg(Field f, Object val, String message) {
+	public static String getErrorMsg(Field f, Object val, String message) {
 		return getErrorMsg(f, val) + "; " + message;
 	}
 	
-	static String getErrorMsg(Field f, Object val) {
+	public static String getErrorMsg(Field f, Object val) {
 		String msg = "can not set ";
 		if(val instanceof LinkedHashMap) {
 			msg += "Object to " + 
@@ -52,11 +52,20 @@ public class XJSONException extends RuntimeException {
 		return msg;
 	}
 	
-	static String getErrorMsg(char[] chars, int offset) {
+	public static String getErrorMsg(char[] chars, int offset) {
 		String base = "invalid json string near ";
 		int end = offset + END_OFFSET > chars.length ? chars.length : offset + END_OFFSET;
 		String msg = new String(
 				Arrays.copyOfRange(chars, offset, end));
 		return base + msg;
+	}
+	
+	public static String getErrorMsg(String json, int offset) {
+		int off = offset < 0 ? 0 : offset;
+		if(off > json.length()) {
+			off = json.length();
+		}
+		int end = off + END_OFFSET > json.length() ? json.length() : off + END_OFFSET;
+		return "invalid json string near " + json.substring(off, end);
 	}
 }
