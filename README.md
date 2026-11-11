@@ -110,7 +110,7 @@ List<HD3D> parallel = xn.parseListParallel(bytes, HD3D.class);
 
 ## 性能基准
 
-测试数据：44.6MB JSON（11 万个 HD3D 实体，7 字段含中文转义），10 轮平均，JVM `-Xmx4g -XX:+UseG1GC`，对照 Jackson 2.13.5。完整复现见 `src/test/java/com/archer/xjson/test/JsonTest.java`。
+测试数据：44.6MB JSON（11 万个 实体，7 字段含中文转义），10 轮平均，JVM `-Xmx4g -XX:+UseG1GC`，对照 Jackson 2.13.5。
 
 ### 通用 Map 解析（parseList，无类型）
 
