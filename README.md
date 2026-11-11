@@ -118,9 +118,7 @@ List<HD3D> parallel = xn.parseListParallel(bytes, HD3D.class);
 |---|---|---|
 | Jackson (String) | 571.94 ms | 284.80 MB |
 | XJSON (String) | 221.48 ms | 180.11 MB |
-| XJSON (byte[]) | 237.80 ms | 142.95 MB |
-| XNJSON (String) | ~280 ms | 178.92 MB |
-| XNJSON (byte[]) | 267.96 ms | 144.59 MB |
+| XNJSON (String) | 280 ms | 178.92 MB |
 
 ### 实体解析（parseList(..., HD3D.class)）
 
@@ -128,9 +126,7 @@ List<HD3D> parallel = xn.parseListParallel(bytes, HD3D.class);
 |---|---|---|
 | Jackson (String) | 468.03 ms | 195.75 MB |
 | XJSON (String) | 265.80 ms | 175.88 MB |
-| XJSON (byte[]) | 229.88 ms | 86.05 MB |
-| XNJSON (String) | ~265 ms | 154.76 MB |
-| XNJSON (byte[]) | 204.19 ms | 65.61 MB |
+| XNJSON (String) | 265 ms | 154.76 MB |
 | **XNJSON (byte[] 并行)** | **129.29 ms** | **79.71 MB** |
 
 ### 实体序列化（stringify）
