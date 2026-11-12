@@ -4,7 +4,7 @@
 
   <groupId>io.github.tagaryen</groupId>
   <artifactId>archer-xjson</artifactId>
-  <version>1.2.0</version>
+  <version>1.2.1</version>
   <packaging>jar</packaging>
   <description>
     JSON serializer/deserializer. 
@@ -55,6 +55,9 @@
           <source>1.8</source>
           <target>1.8</target>
           <encoding>utf8</encoding>
+          <compilerArgs>
+            <arg>-XDignore.symbol.file</arg>
+          </compilerArgs>
         </configuration>
       </plugin>
       <plugin>
