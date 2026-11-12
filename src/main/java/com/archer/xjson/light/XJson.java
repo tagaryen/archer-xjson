@@ -12,9 +12,9 @@ import java.util.Map;
 
 
 @SuppressWarnings("restriction")
-public final class Json {
+public final class XJson {
 
-    private Json() {}
+    private XJson() {}
 
     private static final ThreadLocal<JsonWriter> WRITERS = ThreadLocal.withInitial(JsonWriter::new);
     private static final ThreadLocal<JsonParser> PARSERS = ThreadLocal.withInitial(JsonParser::new);
@@ -74,7 +74,7 @@ public final class Json {
 
     /** 参数化类型入口：{@code Json.parseObject(data, new TypeRef<Base<Point>>() {})} */
     @SuppressWarnings("unchecked")
-    public static <T> T parseObject(byte[] data, TypeRef<T> ref) {
+    public static <T> T parseObject(byte[] data, XTypeRef<T> ref) {
         JsonParser p = PARSERS.get();
         try {
             p.init(data, 0, data.length);
@@ -86,7 +86,7 @@ public final class Json {
         }
     }
 
-    public static <T> T parseObject(String s, TypeRef<T> ref) {
+    public static <T> T parseObject(String s, XTypeRef<T> ref) {
         return parseObject(s.getBytes(StandardCharsets.UTF_8), ref);
     }
 
