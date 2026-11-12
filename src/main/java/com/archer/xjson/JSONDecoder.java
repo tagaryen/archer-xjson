@@ -26,62 +26,238 @@ import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.ArrayBlockingQueue;
 
-class JSONDecoder {
+abstract class JSONDecoder {
 
 	/** 值字符串去重的最大长度（超出不进缓存） */
 	static final int VALUE_INTERN_MAX_LEN = 32;
 	/** 值字符串去重缓存的条目上限（防止病态数据撑爆内存） */
 	static final int VALUE_INTERN_LIMIT = 4096;
 
-	/** String 输入模式（bytes == null） */
-	private final String json;
-	/** byte[] 输入模式（json == null，纯 ASCII） */
-	private final byte[] bytes;
-	private final int len;
-	private int pos;
+	final int len;
+	int pos;
 	/** 单遍类型化解析时的映射器（提供 strict 模式与 fallback 转换） */
-	private JSONReflect reflector;
+	JSONReflect reflector;
 
-	private StringTable keyTable;
-	private StringTable valueTable;
+	StringTable keyTable;
+	StringTable valueTable;
 
-	private JSONDecoder(String json) {
-		this.json = json;
-		this.bytes = null;
-		this.len = json.length();
-		this.pos = 0;
+	JSONDecoder(int len) {
+		this.len = len;
 	}
 
-	private JSONDecoder(byte[] bytes) {
-		this.json = null;
-		this.bytes = bytes;
-		this.len = bytes.length;
-		this.pos = 0;
+	/** 字符访问：双模差异下沉到子类，热路径零分支 */
+	abstract char at(int i);
+
+	/** 对象 key：基于区间零分配去重，命中不产生临时字符串 */
+	abstract String parseKey();
+
+	/** 值位置字符串：长度 <=32 且缓存未满时去重复用 */
+	abstract String parseStringValue();
+
+	/** 带转义的字符串：逐段解码 */
+	abstract String parseString();
+
+	abstract XJSONException errAt(int offset);
+
+	/** 纯 ASCII byte[] -> String，绕开 Charset.decoder 每次分配（-Xprof 8.4% 热点） */
+	@SuppressWarnings("deprecation")
+	static String asciiString(byte[] src, int start, int len) {
+		return new String(src, 0, start, len);
 	}
 
-	/** 统一字符访问：byte 模式假定纯 ASCII（入口已检测） */
-	private char charAt(int i) {
-		return bytes != null ? (char) bytes[i] : json.charAt(i);
+	/** String 输入模式 */
+	static final class Str extends JSONDecoder {
+		private final String json;
+
+		Str(String json) {
+			super(json.length());
+			this.json = json;
+		}
+
+		@Override
+		char at(int i) {
+			return json.charAt(i);
+		}
+
+		@Override
+		XJSONException errAt(int offset) {
+			return new XJSONException(XJSONException.getErrorMsg(json, offset));
+		}
+
+		@Override
+		String parseKey() {
+			int start = pos + 1;
+			int quote = json.indexOf('"', start);
+			if(quote < 0) {
+				throw errAt(start - 1);
+			}
+			for(int k = start; k < quote; k++) {
+				if(json.charAt(k) == '\\') {
+					pos = start - 1;
+					return keyTable().intern(parseString());
+				}
+			}
+			pos = quote + 1;
+			return keyTable().intern(json, start, quote);
+		}
+
+		@Override
+		String parseStringValue() {
+			int start = pos + 1;
+			int quote = json.indexOf('"', start);
+			if(quote < 0) {
+				throw errAt(start - 1);
+			}
+			for(int k = start; k < quote; k++) {
+				if(json.charAt(k) == '\\') {
+					return parseString();
+				}
+			}
+			pos = quote + 1;
+			int len = quote - start;
+			if(len <= VALUE_INTERN_MAX_LEN && valueTable().size < VALUE_INTERN_LIMIT) {
+				return valueTable().intern(json, start, quote);
+			}
+			return json.substring(start, quote);
+		}
+
+		@Override
+		String parseString() {
+			int start = ++pos;
+			int quote = json.indexOf('"', start);
+			if(quote < 0) {
+				throw errAt(start - 1);
+			}
+			for(int k = start; k < quote; k++) {
+				if(json.charAt(k) == '\\') {
+					pos = start;
+					StringBuilder sb = new StringBuilder(quote - start + 16);
+					while(pos < len) {
+						char c = json.charAt(pos++);
+						if(c == '"') {
+							return sb.toString();
+						}
+						if(c == '\\') {
+							sb.append(parseEscape());
+						} else {
+							sb.append(c);
+						}
+					}
+					throw errAt(start - 1);
+				}
+			}
+			pos = quote + 1;
+			return json.substring(start, quote);
+		}
 	}
 
-	private XJSONException errAt(int offset) {
-		if(bytes != null) {
+	/** byte[] 输入模式（纯 ASCII） */
+	static final class Byt extends JSONDecoder {
+		private final byte[] bytes;
+
+		Byt(byte[] bytes) {
+			super(bytes.length);
+			this.bytes = bytes;
+		}
+
+		@Override
+		char at(int i) {
+			return (char) bytes[i];
+		}
+
+		@Override
+		XJSONException errAt(int offset) {
 			int off = offset < 0 ? 0 : (offset > len ? len : offset);
 			int end = off + XJSONException.END_OFFSET > len ? len : off + XJSONException.END_OFFSET;
 			return new XJSONException("invalid json string near " +
-					new String(bytes, off, end - off, StandardCharsets.ISO_8859_1));
+					asciiString(bytes, off, end - off));
 		}
-		return new XJSONException(XJSONException.getErrorMsg(json, offset));
+
+		@Override
+		String parseKey() {
+			int start = pos + 1;
+			int p = start;
+			while(p < len) {
+				byte b = bytes[p];
+				if(b == '"') {
+					pos = p + 1;
+					return keyTable().intern(bytes, start, p);
+				}
+				if(b == '\\') {
+					pos = start - 1;
+					return keyTable().intern(parseString());
+				}
+				p++;
+			}
+			throw errAt(start - 1);
+		}
+
+		@Override
+		String parseStringValue() {
+			int start = pos + 1;
+			int p = start;
+			while(p < len) {
+				byte b = bytes[p];
+				if(b == '"') {
+					pos = p + 1;
+					int len = p - start;
+					if(len <= VALUE_INTERN_MAX_LEN && valueTable().size < VALUE_INTERN_LIMIT) {
+						return valueTable().intern(bytes, start, p);
+					}
+					return asciiString(bytes, start, len);
+				}
+				if(b == '\\') {
+					pos = start - 1;
+					return parseString();
+				}
+				p++;
+			}
+			throw errAt(start - 1);
+		}
+
+		@Override
+		String parseString() {
+			int start = ++pos;
+			int p = start;
+			while(p < len) {
+				byte b = bytes[p];
+				if(b == '"') {
+					pos = p + 1;
+					return asciiString(bytes, start, p - start);
+				}
+				if(b == '\\') {
+					break;
+				}
+				p++;
+			}
+			if(p >= len) {
+				throw errAt(start - 1);
+			}
+			pos = start;
+			StringBuilder sb = new StringBuilder(p - start + 16);
+			while(pos < len) {
+				char c = (char) bytes[pos++];
+				if(c == '"') {
+					return sb.toString();
+				}
+				if(c == '\\') {
+					sb.append(parseEscape());
+				} else {
+					sb.append(c);
+				}
+			}
+			throw errAt(start - 1);
+		}
 	}
 
-	private StringTable keyTable() {
+	final StringTable keyTable() {
 		if(keyTable == null) {
 			keyTable = new StringTable(64, -1);
 		}
 		return keyTable;
 	}
 
-	private StringTable valueTable() {
+	final StringTable valueTable() {
 		if(valueTable == null) {
 			valueTable = new StringTable(512, VALUE_INTERN_LIMIT);
 		}
@@ -158,7 +334,7 @@ class JSONDecoder {
 				}
 				idx = (idx + 1) & mask;
 			}
-			String s = new String(src, start, len, StandardCharsets.ISO_8859_1);
+			String s = asciiString(src, start, len);
 			if(limit >= 0 && size >= limit) {
 				return s;
 			}
@@ -245,9 +421,9 @@ class JSONDecoder {
 
 	static XMap<String, Object> parseToMap(String json)
 			throws XJSONException {
-		JSONDecoder dec = new JSONDecoder(json);
+		JSONDecoder dec = new Str(json);
 		dec.skipWs();
-		if(dec.pos >= dec.len || dec.charAt(dec.pos) != '{') {
+		if(dec.pos >= dec.len || dec.at(dec.pos) != '{') {
 			throw dec.errAt(dec.pos);
 		}
 		XMap<String, Object> ret = dec.parseObject();
@@ -260,9 +436,9 @@ class JSONDecoder {
 
 	static ArrayList<Object> parseToList(String json)
 			throws XJSONException {
-		JSONDecoder dec = new JSONDecoder(json);
+		JSONDecoder dec = new Str(json);
 		dec.skipWs();
-		if(dec.pos >= dec.len || dec.charAt(dec.pos) != '[') {
+		if(dec.pos >= dec.len || dec.at(dec.pos) != '[') {
 			throw dec.errAt(dec.pos);
 		}
 		ArrayList<Object> ret = dec.parseArray();
@@ -277,7 +453,7 @@ class JSONDecoder {
 			throws XJSONException {
 		JSONDecoder dec = decoderOf(json);
 		dec.skipWs();
-		if(dec.pos >= dec.len || dec.charAt(dec.pos) != '{') {
+		if(dec.pos >= dec.len || dec.at(dec.pos) != '{') {
 			throw dec.errAt(dec.pos);
 		}
 		XMap<String, Object> ret = dec.parseObject();
@@ -292,7 +468,7 @@ class JSONDecoder {
 			throws XJSONException {
 		JSONDecoder dec = decoderOf(json);
 		dec.skipWs();
-		if(dec.pos >= dec.len || dec.charAt(dec.pos) != '[') {
+		if(dec.pos >= dec.len || dec.at(dec.pos) != '[') {
 			throw dec.errAt(dec.pos);
 		}
 		ArrayList<Object> ret = dec.parseArray();
@@ -307,24 +483,24 @@ class JSONDecoder {
 	private static JSONDecoder decoderOf(byte[] data) {
 		for(int i = 0; i < data.length; i++) {
 			if(data[i] < 0) {
-				return new JSONDecoder(new String(data, StandardCharsets.UTF_8));
+				return new Str(new String(data, StandardCharsets.UTF_8));
 			}
 		}
-		return new JSONDecoder(data);
+		return new Byt(data);
 	}
 
 	static <T> T parseToClass(String json, Class<T> clazz, JSONReflect reflector)
 			throws XJSONException {
-		return new JSONDecoder(json).parseTopAsType(clazz, reflector);
+		return new Str(json).parseTopAsType(clazz, reflector);
 	}
 
 	static <T> T parseToClass(String json, JavaTypeRef<T> ref, JSONReflect reflector) {
-		return new JSONDecoder(json).parseTopAsType(ref.getJavaType(), reflector);
+		return new Str(json).parseTopAsType(ref.getJavaType(), reflector);
 	}
 
 	static <T> T parseToClass(String json, Type type, JSONReflect reflector)
 			throws XJSONException {
-		return new JSONDecoder(json).parseTopAsType(type, reflector);
+		return new Str(json).parseTopAsType(type, reflector);
 	}
 
 	static <T> T parseToClass(byte[] json, Class<T> clazz, JSONReflect reflector)
@@ -343,17 +519,17 @@ class JSONDecoder {
 
 	static <T> ArrayList<T> parseToClassList(String json, Class<T> clazz, JSONReflect reflector)
 			throws XJSONException {
-		return new JSONDecoder(json).parseTopAsList(clazz, reflector);
+		return new Str(json).parseTopAsList(clazz, reflector);
 	}
 
 	static <T> ArrayList<T> parseToClassList(String json, JavaTypeRef<T> ref, JSONReflect reflector)
 			throws XJSONException {
-		return new JSONDecoder(json).parseTopAsList(ref.getJavaType(), reflector);
+		return new Str(json).parseTopAsList(ref.getJavaType(), reflector);
 	}
 
 	static <T> ArrayList<T> parseToClassList(String json, Type type, JSONReflect reflector)
 			throws XJSONException {
-		return new JSONDecoder(json).parseTopAsList(type, reflector);
+		return new Str(json).parseTopAsList(type, reflector);
 	}
 
 	static <T> ArrayList<T> parseToClassList(byte[] json, Class<T> clazz, JSONReflect reflector)
@@ -373,10 +549,10 @@ class JSONDecoder {
 
 	/** 顶层对象 + 目标类型：单遍直填 */
 	@SuppressWarnings("unchecked")
-	private <T> T parseTopAsType(Type type, JSONReflect reflector) {
+	final <T> T parseTopAsType(Type type, JSONReflect reflector) {
 		this.reflector = reflector;
 		skipWs();
-		if(pos >= len || charAt(pos) != '{') {
+		if(pos >= len || at(pos) != '{') {
 			throw errAt(pos);
 		}
 		Object ret;
@@ -405,20 +581,20 @@ class JSONDecoder {
 	}
 
 	/** 顶层数组 + 元素类型：单遍直填 */
-	private <T> ArrayList<T> parseTopAsList(Type elemType, JSONReflect reflector) {
+	final <T> ArrayList<T> parseTopAsList(Type elemType, JSONReflect reflector) {
 		this.reflector = reflector;
 		skipWs();
-		if(pos >= len || charAt(pos) != '[') {
+		if(pos >= len || at(pos) != '[') {
 			throw errAt(pos);
 		}
 		pos++; // consume '['
-		ArrayList<T> ret = new ArrayList<>();
+		ArrayList<T> ret = new ArrayList<>(64);
 		for(;;) {
 			skipWs();
 			if(pos >= len) {
 				throw errAt(len - 1);
 			}
-			if(charAt(pos) == ']') {
+			if(at(pos) == ']') {
 				pos++;
 				break;
 			}
@@ -436,7 +612,7 @@ class JSONDecoder {
 			if(pos >= len) {
 				throw errAt(len - 1);
 			}
-			char c = charAt(pos);
+			char c = at(pos);
 			if(c == ',') {
 				pos++;
 				continue;
@@ -467,7 +643,7 @@ class JSONDecoder {
 
 	private void skipWs() {
 		while(pos < len) {
-			char c = charAt(pos);
+			char c = at(pos);
 			if(c != ' ' && c != '\n' && c != '\r' && c != '\t') {
 				break;
 			}
@@ -479,7 +655,7 @@ class JSONDecoder {
 		if(pos >= len) {
 			throw errAt(len - 1);
 		}
-		char c = charAt(pos);
+		char c = at(pos);
 		switch(c) {
 		case '{':
 			return parseObject();
@@ -512,7 +688,7 @@ class JSONDecoder {
 			if(pos >= len) {
 				throw errAt(len - 1);
 			}
-			char c = charAt(pos);
+			char c = at(pos);
 			if(c == '}') {
 				pos++;
 				return ret;
@@ -522,7 +698,7 @@ class JSONDecoder {
 			}
 			String key = parseKey();
 			skipWs();
-			if(pos >= len || charAt(pos) != ':') {
+			if(pos >= len || at(pos) != ':') {
 				throw errAt(pos);
 			}
 			pos++;
@@ -533,7 +709,7 @@ class JSONDecoder {
 			if(pos >= len) {
 				throw errAt(len - 1);
 			}
-			c = charAt(pos);
+			c = at(pos);
 			if(c == ',') {
 				pos++;
 				continue;
@@ -546,88 +722,15 @@ class JSONDecoder {
 		}
 	}
 
-	/** 对象 key：基于区间零分配去重，命中不产生任何临时字符串 */
-	private String parseKey() {
-		int start = pos + 1;
-		if(bytes == null) {
-			int quote = json.indexOf('"', start);
-			if(quote < 0) {
-				throw errAt(start - 1);
-			}
-			for(int k = start; k < quote; k++) {
-				if(json.charAt(k) == '\\') {
-					pos = start - 1;
-					return keyTable().intern(parseString());
-				}
-			}
-			pos = quote + 1;
-			return keyTable().intern(json, start, quote);
-		}
-		int p = start;
-		while(p < len) {
-			byte b = bytes[p];
-			if(b == '"') {
-				pos = p + 1;
-				return keyTable().intern(bytes, start, p);
-			}
-			if(b == '\\') {
-				pos = start - 1;
-				return keyTable().intern(parseString());
-			}
-			p++;
-		}
-		throw errAt(start - 1);
-	}
-
-	/** 值位置字符串：长度 <=32 且缓存未满时去重复用，超出直接 materialize */
-	private String parseStringValue() {
-		int start = pos + 1;
-		if(bytes == null) {
-			int quote = json.indexOf('"', start);
-			if(quote < 0) {
-				throw errAt(start - 1);
-			}
-			for(int k = start; k < quote; k++) {
-				if(json.charAt(k) == '\\') {
-					return parseString();
-				}
-			}
-			pos = quote + 1;
-			int len = quote - start;
-			if(len <= VALUE_INTERN_MAX_LEN && valueTable().size < VALUE_INTERN_LIMIT) {
-				return valueTable().intern(json, start, quote);
-			}
-			return json.substring(start, quote);
-		}
-		int p = start;
-		while(p < len) {
-			byte b = bytes[p];
-			if(b == '"') {
-				pos = p + 1;
-				int len = p - start;
-				if(len <= VALUE_INTERN_MAX_LEN && valueTable().size < VALUE_INTERN_LIMIT) {
-					return valueTable().intern(bytes, start, p);
-				}
-				return new String(bytes, start, len, StandardCharsets.ISO_8859_1);
-			}
-			if(b == '\\') {
-				pos = start - 1;
-				return parseString();
-			}
-			p++;
-		}
-		throw errAt(start - 1);
-	}
-
 	private ArrayList<Object> parseArray() {
 		pos++; // consume '['
-		ArrayList<Object> ret = new ArrayList<>(16);
+		ArrayList<Object> ret = new ArrayList<>(64);
 		for(;;) {
 			skipWs();
 			if(pos >= len) {
 				throw errAt(len - 1);
 			}
-			char c = charAt(pos);
+			char c = at(pos);
 			if(c == ']') {
 				pos++;
 				return ret;
@@ -637,7 +740,7 @@ class JSONDecoder {
 			if(pos >= len) {
 				throw errAt(len - 1);
 			}
-			c = charAt(pos);
+			c = at(pos);
 			if(c == ',') {
 				pos++;
 				continue;
@@ -650,75 +753,12 @@ class JSONDecoder {
 		}
 	}
 
-	/** pos 位于起始引号，返回解码后的字符串（含转义解码） */
-	private String parseString() {
-		int start = ++pos; // consume opening quote
-		if(bytes != null) {
-			// byte 模式：手写一遍扫描（无 indexOf intrinsic 可用）
-			int p = start;
-			while(p < len) {
-				byte b = bytes[p];
-				if(b == '"') {
-					pos = p + 1;
-					return new String(bytes, start, p - start, StandardCharsets.ISO_8859_1);
-				}
-				if(b == '\\') {
-					break;
-				}
-				p++;
-			}
-			if(p >= len) {
-				throw errAt(start - 1);
-			}
-			pos = start;
-			StringBuilder sb = new StringBuilder(p - start + 16);
-			while(pos < len) {
-				char c = (char) bytes[pos++];
-				if(c == '"') {
-					return sb.toString();
-				}
-				if(c == '\\') {
-					sb.append(parseEscape());
-				} else {
-					sb.append(c);
-				}
-			}
-			throw errAt(start - 1);
-		}
-		// String 模式：indexOf 定位闭合引号，仅在引号区间内检查转义符
-		int quote = json.indexOf('"', start);
-		if(quote < 0) {
-			throw errAt(start - 1);
-		}
-		for(int k = start; k < quote; k++) {
-			if(json.charAt(k) == '\\') {
-				// 慢路径：包含转义字符，逐段解码
-				pos = start;
-				StringBuilder sb = new StringBuilder(quote - start + 16);
-				while(pos < len) {
-					char c = json.charAt(pos++);
-					if(c == '"') {
-						return sb.toString();
-					}
-					if(c == '\\') {
-						sb.append(parseEscape());
-					} else {
-						sb.append(c);
-					}
-				}
-				throw errAt(start - 1);
-			}
-		}
-		pos = quote + 1;
-		return json.substring(start, quote);
-	}
-
 	/** pos 位于反斜杠之后，解码一个转义序列 */
-	private char parseEscape() {
+	final char parseEscape() {
 		if(pos >= len) {
 			throw errAt(pos - 1);
 		}
-		char e = charAt(pos++);
+		char e = at(pos++);
 		switch(e) {
 		case '"': return '"';
 		case '\\': return '\\';
@@ -734,7 +774,7 @@ class JSONDecoder {
 			}
 			int code = 0;
 			for(int k = 0; k < 4; k++) {
-				int d = hexDigit(charAt(pos++));
+				int d = hexDigit(at(pos++));
 				if(d < 0) {
 					throw errAt(pos - 5);
 				}
@@ -761,8 +801,8 @@ class JSONDecoder {
 
 	/** 单引号字符值，如 'a' -> Character */
 	private Character parseChar() {
-		if(pos + 2 < len && charAt(pos + 2) == '\'') {
-			Character c = charAt(pos + 1);
+		if(pos + 2 < len && at(pos + 2) == '\'') {
+			Character c = at(pos + 1);
 			pos += 3;
 			return c;
 		}
@@ -775,7 +815,7 @@ class JSONDecoder {
 			throw errAt(pos);
 		}
 		for(int i = 0; i < n; i++) {
-			if(charAt(pos + i) != literal.charAt(i)) {
+			if(at(pos + i) != literal.charAt(i)) {
 				throw errAt(pos);
 			}
 		}
@@ -789,7 +829,7 @@ class JSONDecoder {
 	 */
 	private Number parseNumber() {
 		int start = pos;
-		boolean neg = charAt(pos) == '-';
+		boolean neg = at(pos) == '-';
 		if(neg) {
 			pos++;
 		}
@@ -801,7 +841,7 @@ class JSONDecoder {
 
 		// 整数部分：单遍累加，超出 long 时自动转 double
 		while(pos < len) {
-			char c = charAt(pos);
+			char c = at(pos);
 			if(c < '0' || c > '9') {
 				break;
 			}
@@ -823,7 +863,7 @@ class JSONDecoder {
 		}
 
 		// 小数部分
-		if(pos < len && charAt(pos) == '.') {
+		if(pos < len && at(pos) == '.') {
 			if(!isDouble) {
 				isDouble = true;
 				dval = (double) ival;
@@ -831,7 +871,7 @@ class JSONDecoder {
 			pos++;
 			double factor = 0.1;
 			while(pos < len) {
-				char c = charAt(pos);
+				char c = at(pos);
 				if(c < '0' || c > '9') {
 					break;
 				}
@@ -842,16 +882,16 @@ class JSONDecoder {
 		}
 
 		// 指数部分
-		if(pos < len && (charAt(pos) == 'e' || charAt(pos) == 'E')) {
+		if(pos < len && (at(pos) == 'e' || at(pos) == 'E')) {
 			pos++;
 			boolean eneg = false;
-			if(pos < len && (charAt(pos) == '+' || charAt(pos) == '-')) {
-				eneg = charAt(pos) == '-';
+			if(pos < len && (at(pos) == '+' || at(pos) == '-')) {
+				eneg = at(pos) == '-';
 				pos++;
 			}
 			int exp = 0;
 			while(pos < len) {
-				char c = charAt(pos);
+				char c = at(pos);
 				if(c < '0' || c > '9') {
 					break;
 				}
@@ -886,7 +926,7 @@ class JSONDecoder {
 	 */
 	private Object parseValueAsType(Type type) {
 		// JSON null：统一返回哨兵，由调用方决定跳过字段或向集合填 null
-		if(pos < len && charAt(pos) == 'n') {
+		if(pos < len && at(pos) == 'n') {
 			parseLiteral("null", null);
 			return NULL;
 		}
@@ -898,14 +938,14 @@ class JSONDecoder {
 			Class<?> raw = (Class<?>) pt.getRawType();
 			Type[] args = pt.getActualTypeArguments();
 			if(Collection.class.isAssignableFrom(raw)) {
-				if(pos < len && charAt(pos) == '[') {
+				if(pos < len && at(pos) == '[') {
 					return parseCollectionAsType(raw,
 							args != null && args.length == 1 ? args[0] : Object.class);
 				}
 				return reflector.fromJavaType(type, parseValue());
 			}
 			if(Map.class.isAssignableFrom(raw)) {
-				if(pos < len && charAt(pos) == '{') {
+				if(pos < len && at(pos) == '{') {
 					return parseMapAsType(raw,
 							args != null && args.length == 2 ? args[0] : String.class,
 							args != null && args.length == 2 ? args[1] : Object.class);
@@ -913,7 +953,7 @@ class JSONDecoder {
 				return reflector.fromJavaType(type, parseValue());
 			}
 			// 泛型 POJO：Result<User>，按类型实参解析字段
-			if(pos < len && charAt(pos) == '{') {
+			if(pos < len && at(pos) == '{') {
 				return parseBean(raw, args);
 			}
 			return reflector.fromJavaType(type, parseValue());
@@ -927,14 +967,14 @@ class JSONDecoder {
 			return parseValue();
 		}
 		if(clazz == String.class) {
-			if(pos < len && charAt(pos) == '"') {
+			if(pos < len && at(pos) == '"') {
 				return parseStringValue();
 			}
 			return reflector.fromJavaType(clazz, parseValue());
 		}
 		if(isNumberTarget(clazz)) {
 			if(pos < len) {
-				char c = charAt(pos);
+				char c = at(pos);
 				if((c >= '0' && c <= '9') || c == '-') {
 					return convertNumber(parseNumber(), clazz);
 				}
@@ -942,28 +982,28 @@ class JSONDecoder {
 			return reflector.fromJavaType(clazz, parseValue());
 		}
 		if(clazz == Boolean.class || clazz == boolean.class) {
-			if(pos < len && (charAt(pos) == 't' || charAt(pos) == 'f')) {
-				return charAt(pos) == 't'
+			if(pos < len && (at(pos) == 't' || at(pos) == 'f')) {
+				return at(pos) == 't'
 						? parseLiteral("true", Boolean.TRUE)
 						: parseLiteral("false", Boolean.FALSE);
 			}
 			return reflector.fromJavaType(clazz, parseValue());
 		}
 		if(clazz == Character.class || clazz == char.class) {
-			if(pos < len && charAt(pos) == '\'') {
+			if(pos < len && at(pos) == '\'') {
 				return parseChar();
 			}
 			return reflector.fromJavaType(clazz, parseValue());
 		}
 		if(Date.class.isAssignableFrom(clazz) || clazz == LocalDate.class
 				|| clazz == LocalTime.class || clazz == LocalDateTime.class) {
-			if(pos < len && charAt(pos) == '"') {
+			if(pos < len && at(pos) == '"') {
 				return reflector.fromJavaType(clazz, parseStringValue());
 			}
 			return reflector.fromJavaType(clazz, parseValue());
 		}
 		if(clazz.isEnum()) {
-			if(pos < len && charAt(pos) == '"') {
+			if(pos < len && at(pos) == '"') {
 				@SuppressWarnings("unchecked")
 				Object e = JSONReflect.reflectToEnum(
 						(Class<Enum<?>>) clazz, parseStringValue());
@@ -974,30 +1014,30 @@ class JSONDecoder {
 		if(clazz.isArray()) {
 			// byte[] 特例：Base64 字符串（对齐 reflectToByteArr）
 			if(clazz == byte[].class) {
-				if(pos < len && charAt(pos) == '"') {
+				if(pos < len && at(pos) == '"') {
 					return Base64.getDecoder().decode(parseStringValue());
 				}
 				return reflector.fromJavaType(clazz, parseValue());
 			}
-			if(pos < len && charAt(pos) == '[') {
+			if(pos < len && at(pos) == '[') {
 				return parseArrayAsType(clazz.getComponentType());
 			}
 			return reflector.fromJavaType(clazz, parseValue());
 		}
 		if(Collection.class.isAssignableFrom(clazz)) {
-			if(pos < len && charAt(pos) == '[') {
+			if(pos < len && at(pos) == '[') {
 				return parseCollectionAsType(clazz, Object.class);
 			}
 			return reflector.fromJavaType(clazz, parseValue());
 		}
 		if(Map.class.isAssignableFrom(clazz)) {
-			if(pos < len && charAt(pos) == '{') {
+			if(pos < len && at(pos) == '{') {
 				return parseMapAsType(clazz, String.class, Object.class);
 			}
 			return reflector.fromJavaType(clazz, parseValue());
 		}
 		// 普通 POJO
-		if(pos < len && charAt(pos) == '{') {
+		if(pos < len && at(pos) == '{') {
 			return parseBean(clazz, null);
 		}
 		return reflector.fromJavaType(clazz, parseValue());
@@ -1061,11 +1101,11 @@ class JSONDecoder {
 		if(pos >= len) {
 			throw errAt(len - 1);
 		}
-		char c = charAt(pos);
+		char c = at(pos);
 		if(c == '"') {
 			pos++;
 			while(pos < len) {
-				char s = charAt(pos++);
+				char s = at(pos++);
 				if(s == '\\' && pos < len) {
 					pos++;
 					continue;
@@ -1079,10 +1119,10 @@ class JSONDecoder {
 		if(c == '{' || c == '[') {
 			int depth = 0;
 			while(pos < len) {
-				char d = charAt(pos++);
+				char d = at(pos++);
 				if(d == '"') {
 					while(pos < len) {
-						char s = charAt(pos++);
+						char s = at(pos++);
 						if(s == '\\' && pos < len) {
 							pos++;
 							continue;
@@ -1103,7 +1143,7 @@ class JSONDecoder {
 		}
 		// 数字 / true / false / null：扫到值分隔符
 		while(pos < len) {
-			char d = charAt(pos);
+			char d = at(pos);
 			if(d == ',' || d == '}' || d == ']' || d == ' ' || d == '\n'
 					|| d == '\r' || d == '\t') {
 				break;
@@ -1125,7 +1165,7 @@ class JSONDecoder {
 		Field[] fields = meta.fields;
 		boolean strictJson = reflector.strictJsonMode;
 		boolean strictClass = reflector.strictClassMode;
-		ArrayList<String> seenKeys = strictJson ? new ArrayList<>() : null;
+		ArrayList<String> seenKeys = strictJson ? new ArrayList<>(32) : null;
 		BitSet assigned = strictClass ? new BitSet(fields.length) : null;
 
 		pos++; // consume '{'
@@ -1134,7 +1174,7 @@ class JSONDecoder {
 			if(pos >= len) {
 				throw errAt(len - 1);
 			}
-			char c = charAt(pos);
+			char c = at(pos);
 			if(c == '}') {
 				pos++;
 				break;
@@ -1147,14 +1187,13 @@ class JSONDecoder {
 				seenKeys.add(key);
 			}
 			skipWs();
-			if(pos >= len || charAt(pos) != ':') {
+			if(pos >= len || at(pos) != ':') {
 				throw errAt(pos);
 			}
 			pos++;
 			skipWs();
 
-			Integer fiBox = meta.index.get(key);
-			int fi = null == fiBox ? -1 : fiBox;
+			int fi = meta.index.get(key);
 			if(fi >= 0) {
 				Field f = fields[fi];
 				Type ft = resolveFieldType(f, childTypes);
@@ -1181,7 +1220,7 @@ class JSONDecoder {
 			if(pos >= len) {
 				throw errAt(len - 1);
 			}
-			c = charAt(pos);
+			c = at(pos);
 			if(c == ',') {
 				pos++;
 				continue;
@@ -1195,7 +1234,7 @@ class JSONDecoder {
 
 		if(strictJson) {
 			for(String k : seenKeys) {
-				if(!meta.index.containsKey(k)) {
+				if(meta.index.get(k) < 0) {
 					throw new XJSONException(
 							XJSONException.getErrorMsg(k, clazz, false));
 				}
@@ -1233,13 +1272,13 @@ class JSONDecoder {
 	/** 数组单遍填充；原始数组经 Array.set 自动拆箱，规避树路径的强转 bug */
 	private Object parseArrayAsType(Class<?> compType) {
 		pos++; // consume '['
-		ArrayList<Object> tmp = new ArrayList<>(16);
+		ArrayList<Object> tmp = new ArrayList<>(32);
 		for(;;) {
 			skipWs();
 			if(pos >= len) {
 				throw errAt(len - 1);
 			}
-			if(charAt(pos) == ']') {
+			if(at(pos) == ']') {
 				pos++;
 				break;
 			}
@@ -1249,7 +1288,7 @@ class JSONDecoder {
 			if(pos >= len) {
 				throw errAt(len - 1);
 			}
-			char c = charAt(pos);
+			char c = at(pos);
 			if(c == ',') {
 				pos++;
 				continue;
@@ -1273,7 +1312,7 @@ class JSONDecoder {
 		pos++; // consume '['
 		if(List.class.isAssignableFrom(raw)) {
 			ArrayList<Object> list = raw.isInterface()
-					? new ArrayList<>() : (ArrayList<Object>) JSONReflect.newInstance(raw);
+					? new ArrayList<>(32) : (ArrayList<Object>) JSONReflect.newInstance(raw);
 			collectElements(elemType, list);
 			return list;
 		}
@@ -1285,7 +1324,7 @@ class JSONDecoder {
 		}
 		if(Queue.class.isAssignableFrom(raw)) {
 			// 无法预知元素数：先收集再定容（对齐树路径 ABQ 容量 = 元素数）
-			ArrayList<Object> tmp = new ArrayList<>();
+			ArrayList<Object> tmp = new ArrayList<>(32);
 			collectElements(elemType, tmp);
 			Queue<Object> queue = raw.isInterface()
 					? new ArrayBlockingQueue<>(Math.max(1, tmp.size()))
@@ -1302,7 +1341,7 @@ class JSONDecoder {
 			if(pos >= len) {
 				throw errAt(len - 1);
 			}
-			if(charAt(pos) == ']') {
+			if(at(pos) == ']') {
 				pos++;
 				return;
 			}
@@ -1313,7 +1352,7 @@ class JSONDecoder {
 			if(pos >= len) {
 				throw errAt(len - 1);
 			}
-			char c = charAt(pos);
+			char c = at(pos);
 			if(c == ',') {
 				pos++;
 				continue;
@@ -1337,7 +1376,7 @@ class JSONDecoder {
 			if(pos >= len) {
 				throw errAt(len - 1);
 			}
-			char c = charAt(pos);
+			char c = at(pos);
 			if(c == '}') {
 				pos++;
 				return instance;
@@ -1347,7 +1386,7 @@ class JSONDecoder {
 			}
 			String key = parseKey();
 			skipWs();
-			if(pos >= len || charAt(pos) != ':') {
+			if(pos >= len || at(pos) != ':') {
 				throw errAt(pos);
 			}
 			pos++;
@@ -1360,7 +1399,7 @@ class JSONDecoder {
 			if(pos >= len) {
 				throw errAt(len - 1);
 			}
-			c = charAt(pos);
+			c = at(pos);
 			if(c == ',') {
 				pos++;
 				continue;

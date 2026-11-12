@@ -103,9 +103,6 @@ List<Object> list = xn.parseList(bytes);
 
 // 实体解析：ASM 生成强类型反序列化器，字段直写零反射
 List<HD3D> entities = xn.parseList(bytes, HD3D.class);
-
-// 并行解析：SWAR 行边界索引 + 多线程分块，大数据量首选
-List<HD3D> parallel = xn.parseListParallel(bytes, HD3D.class);
 ```
 
 ## 性能基准
@@ -127,7 +124,6 @@ List<HD3D> parallel = xn.parseListParallel(bytes, HD3D.class);
 | Jackson (String) | 468.03 ms | 195.75 MB |
 | XJSON (String) | 265.80 ms | 175.88 MB |
 | XNJSON (String) | 265 ms | 154.76 MB |
-| **XNJSON (byte[] 并行)** | **129.29 ms** | **79.71 MB** |
 
 ### 实体序列化（stringify）
 
@@ -141,8 +137,7 @@ List<HD3D> parallel = xn.parseListParallel(bytes, HD3D.class);
 
 | 场景 | 推荐 |
 |---|---|
-| 大 JSON 实体列表，追求极限速度 | `XNJSON.parseListParallel(byte[], Class)` |
-| 大 JSON 实体列表，单线程 | `XNJSON.parseList(byte[], Class)` |
+| 大 JSON 实体列表 | `XNJSON.parseList(byte[], Class)` |
 | 需要泛型（`Map<String, T>` 等）/ 自定义编解码 / 严格模式 | `XJSON` |
 | 无类型通用解析（Map/List 树） | 两者均可，byte[] 输入内存更低 |
 | 简单调用、免实例化 | `XJSONStatic` |

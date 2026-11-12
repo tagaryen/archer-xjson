@@ -271,10 +271,12 @@ public class XNReader {
 
 	/** 读取字符串值（可能是 null）：短值去重复用，长值直接 materialize */
 	public String readStringValue() {
-		if (readNull()) {
+		skipWs();
+		if (pos + 4 <= end && at(pos) == 'n'
+				&& at(pos + 1) == 'u' && at(pos + 2) == 'l' && at(pos + 3) == 'l') {
+			pos += 4;
 			return null;
 		}
-		skipWs();
 		if (pos >= end || at(pos) != '"') {
 			throw error("expect string");
 		}
@@ -924,7 +926,7 @@ public class XNReader {
 
 	private List<Object> readArrayGeneric() {
 		pos++; // '['
-		List<Object> list = new ArrayList<>();
+		List<Object> list = new ArrayList<>(32);
 		skipWs();
 		if (eatChar(']')) {
 			return list;
@@ -1038,6 +1040,7 @@ public class XNReader {
 
 		private String[] strs;
 		private byte[][] bytes;
+		private int[] hashes;
 		private int size;
 		private final int maxSize;
 		private int hits;
@@ -1049,6 +1052,7 @@ public class XNReader {
 			while (cap < capacity) cap <<= 1;
 			this.strs = new String[cap];
 			this.bytes = new byte[cap][];
+			this.hashes = new int[cap];
 			this.maxSize = maxSize;
 		}
 
@@ -1075,7 +1079,7 @@ public class XNReader {
 					return str;
 				}
 				byte[] pb = bytes[i];
-				if (pb.length == keyLen && bytesEqual(pb, d, start, keyLen)) {
+				if (hashes[i] == h && pb.length == keyLen && bytesEqual(pb, d, start, keyLen)) {
 					if (maxSize >= 0 && size >= maxSize) {
 						hits++;
 					}
@@ -1106,7 +1110,7 @@ public class XNReader {
 					return str;
 				}
 				byte[] pb = bytes[i];
-				if (pb.length == enc.length && bytesEqual(pb, enc, 0, enc.length)) {
+				if (hashes[i] == h && pb.length == enc.length && bytesEqual(pb, enc, 0, enc.length)) {
 					return s;
 				}
 				i = (i + 1) & mask;
@@ -1149,27 +1153,26 @@ public class XNReader {
 			}
 			strs[i] = str;
 			bytes[i] = enc;
+			hashes[i] = h;
 			size++;
 		}
 
 		private void resize() {
 			String[] oldStrs = strs;
 			byte[][] oldBytes = bytes;
+			int[] oldHashes = hashes;
 			strs = new String[oldStrs.length << 1];
 			bytes = new byte[strs.length][];
+			hashes = new int[strs.length];
 			size = 0;
 			for (int j = 0; j < oldStrs.length; j++) {
 				if (null != oldStrs[j]) {
-					putRaw(oldStrs[j], oldBytes[j]);
+					putRaw(oldStrs[j], oldBytes[j], oldHashes[j]);
 				}
 			}
 		}
 
-		private void putRaw(String str, byte[] enc) {
-			int h = 0;
-			for (byte b : enc) {
-				h = 31 * h + (b & 0xFF);
-			}
+		private void putRaw(String str, byte[] enc, int h) {
 			int mask = strs.length - 1;
 			int i = h & mask;
 			while (null != strs[i]) {
@@ -1177,6 +1180,7 @@ public class XNReader {
 			}
 			strs[i] = str;
 			bytes[i] = enc;
+			hashes[i] = h;
 			size++;
 		}
 	}

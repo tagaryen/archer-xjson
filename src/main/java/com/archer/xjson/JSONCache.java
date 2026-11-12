@@ -49,7 +49,7 @@ class JSONCache {
 			hierarchy.add(cur);
 			cur = cur.getSuperclass();
 		}
-		List<Field> collected = new ArrayList<>(16);
+		List<Field> collected = new ArrayList<>(32);
 		for (int i = hierarchy.size() - 1; i >= 0; i--) {
 			Field[] fields = hierarchy.get(i).getDeclaredFields();
 			for (Field f : fields) {

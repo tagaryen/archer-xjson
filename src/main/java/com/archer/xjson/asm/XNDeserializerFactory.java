@@ -125,7 +125,7 @@ class XNDeserializerFactory {
 			for (Field f : fields) {
 				List<Field> group = buckets.get(f.getName().hashCode());
 				if (null == group) {
-					group = new ArrayList<>();
+					group = new ArrayList<>(32);
 					buckets.put(f.getName().hashCode(), group);
 				}
 				group.add(f);

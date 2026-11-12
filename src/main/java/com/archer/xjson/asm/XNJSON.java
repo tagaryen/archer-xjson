@@ -81,11 +81,6 @@ public class XNJSON {
 		return (List<T>) XNJSONRuntime.readListFromBytes(json, elemCls);
 	}
 
-	@SuppressWarnings("unchecked")
-	public <T> List<T> parseListParallel(byte[] json, Class<T> elemCls) {
-		return (List<T>) XNParallel.parseList(json, elemCls);
-	}
-
 	private Object parseModel(String json) {
 		if (null == json || json.trim().isEmpty()) {
 			throw new XNException("input json string can not be null or empty.");

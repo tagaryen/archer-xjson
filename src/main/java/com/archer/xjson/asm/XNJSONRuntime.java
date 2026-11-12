@@ -30,6 +30,7 @@ public class XNJSONRuntime {
 	private static final ConcurrentHashMap<Class<?>, XNFieldFiller> FILLERS = new ConcurrentHashMap<>();
 	private static final ConcurrentHashMap<Class<?>, List<Field>> FIELDS = new ConcurrentHashMap<>();
 	private static final ConcurrentHashMap<Class<?>, Constructor<?>> CTORS = new ConcurrentHashMap<>();
+	private static final ConcurrentHashMap<Class<?>, ValueReader> VALUE_READERS = new ConcurrentHashMap<>();
 
 	public static XNSerializer serializer(Class<?> cls) {
 		XNSerializer ser = SERIALIZERS.get(cls);
@@ -190,6 +191,53 @@ public class XNJSONRuntime {
 		}
 	}
 
+	/** 值读取器：把 Class 一次性解析为具体读取动作，readValue 走 O(1) 缓存命中 */
+	private interface ValueReader {
+		Object read(XNReader r);
+	}
+
+	private static ValueReader valueReader(Class<?> pt) {
+		ValueReader vr = VALUE_READERS.get(pt);
+		if (null == vr) {
+			vr = resolveValueReader(pt);
+			ValueReader existing = VALUE_READERS.putIfAbsent(pt, vr);
+			if (null != existing) {
+				vr = existing;
+			}
+		}
+		return vr;
+	}
+
+	/** 仅在 class 首次出现时执行一次类型链，结果缓存后按 Class 恒等 O(1) 命中 */
+	private static ValueReader resolveValueReader(Class<?> pt) {
+		if (pt == String.class) return r -> r.readStringValue();
+		if (pt == int.class) return r -> r.readInt();
+		if (pt == Integer.class) return r -> r.readInteger();
+		if (pt == long.class) return r -> r.readLong();
+		if (pt == Long.class) return r -> r.readLongObj();
+		if (pt == double.class) return r -> r.readDouble();
+		if (pt == Double.class) return r -> r.readDoubleObj();
+		if (pt == float.class) return r -> r.readFloat();
+		if (pt == Float.class) return r -> r.readFloatObj();
+		if (pt == boolean.class) return r -> r.readBoolean();
+		if (pt == Boolean.class) return r -> r.readBooleanObj();
+		if (pt == byte.class) return r -> r.readByte();
+		if (pt == Byte.class) return r -> r.readByteObj();
+		if (pt == short.class) return r -> r.readShort();
+		if (pt == Short.class) return r -> r.readShortObj();
+		if (pt == char.class) return r -> r.readChar();
+		if (pt == Character.class) return r -> r.readCharObj();
+		if (pt == BigInteger.class) return r -> toBigInteger(r.readNumberAsString());
+		if (pt == BigDecimal.class) return r -> toBigDecimal(r.readNumberAsString());
+		if (Date.class.isAssignableFrom(pt)) return r -> toDate(r.readNumberAsString());
+		if (pt == LocalDate.class) return r -> toLocalDate(r.readString());
+		if (pt == LocalTime.class) return r -> toLocalTime(r.readString());
+		if (pt == LocalDateTime.class) return r -> toLocalDateTime(r.readString());
+		if (pt.isEnum()) return r -> toEnum(r.readString(), pt);
+		if (pt == Object.class) return r -> r.readGeneric();
+		return r -> readBean(r, pt);
+	}
+
 	/** 流式读取单个指定类型的值（不建树） */
 	public static Object readValue(XNReader r, Class<?> pt) {
 		r.skipWs();
@@ -197,37 +245,12 @@ public class XNJSONRuntime {
 			r.readNull();
 			return null;
 		}
-		if (pt == String.class) return r.readStringValue();
-		if (pt == int.class) return r.readInt();
-		if (pt == Integer.class) return r.readInteger();
-		if (pt == long.class) return r.readLong();
-		if (pt == Long.class) return r.readLongObj();
-		if (pt == double.class) return r.readDouble();
-		if (pt == Double.class) return r.readDoubleObj();
-		if (pt == float.class) return r.readFloat();
-		if (pt == Float.class) return r.readFloatObj();
-		if (pt == boolean.class) return r.readBoolean();
-		if (pt == Boolean.class) return r.readBooleanObj();
-		if (pt == byte.class) return r.readByte();
-		if (pt == Byte.class) return r.readByteObj();
-		if (pt == short.class) return r.readShort();
-		if (pt == Short.class) return r.readShortObj();
-		if (pt == char.class) return r.readChar();
-		if (pt == Character.class) return r.readCharObj();
-		if (pt == BigInteger.class) return toBigInteger(r.readNumberAsString());
-		if (pt == BigDecimal.class) return toBigDecimal(r.readNumberAsString());
-		if (Date.class.isAssignableFrom(pt)) return toDate(r.readNumberAsString());
-		if (pt == LocalDate.class) return toLocalDate(r.readString());
-		if (pt == LocalTime.class) return toLocalTime(r.readString());
-		if (pt == LocalDateTime.class) return toLocalDateTime(r.readString());
-		if (pt.isEnum()) return toEnum(r.readString(), pt);
-		if (pt == Object.class) return r.readGeneric();
-		return readBean(r, pt);
+		return valueReader(pt).read(r);
 	}
 
 	/** 流式读取 JSON 数组为 List */
 	public static List<Object> readList(XNReader r, Class<?> elemCls) {
-		List<Object> list = new ArrayList<>();
+		List<Object> list = new ArrayList<>(64);
 		r.skipWs();
 		r.expectChar('[');
 		r.skipWs();
@@ -415,7 +438,7 @@ public class XNJSONRuntime {
 	public static List<Field> fieldsOf(Class<?> cls) {
 		List<Field> fields = FIELDS.get(cls);
 		if (null == fields) {
-			List<Class<?>> hierarchy = new ArrayList<>();
+			List<Class<?>> hierarchy = new ArrayList<>(32);
 			Class<?> cur = cls;
 			while (null != cur && cur != Object.class) {
 				hierarchy.add(0, cur);

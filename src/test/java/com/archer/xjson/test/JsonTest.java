@@ -91,11 +91,6 @@ public class JsonTest {
         sink = xnjson.parseList(readJsonBytes(), LogEntry.class);
     }
 
-    /** SWAR 行边界索引 + 并行分块实体解析 */
-    static void XNParallelEntityParseTest() throws Exception {
-        sink = xnjson.parseListParallel(readJsonBytes(), LogEntry.class);
-    }
-
     static void XNStringifyTest() throws Exception {
         sink = xnjson.stringify(loadSource());
     }
@@ -173,7 +168,6 @@ public class JsonTest {
             benchmark("XEntityBytesParseTest", JsonTest::XEntityBytesParseTest, warmup, rounds);
             benchmark("XNEntityParseTest", JsonTest::XNEntityParseTest, warmup, rounds);
             benchmark("XNBytesEntityParseTest", JsonTest::XNBytesEntityParseTest, warmup, rounds);
-            benchmark("XNParallelEntityParseTest", JsonTest::XNParallelEntityParseTest, warmup, rounds);
 
             benchmark("XNStringifyTest", JsonTest::XNStringifyTest, warmup, rounds);
             benchmark("XStringifyTest", JsonTest::XStringifyTest, warmup, rounds);

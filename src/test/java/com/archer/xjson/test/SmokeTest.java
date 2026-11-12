@@ -7,8 +7,7 @@ import java.util.Objects;
 import com.archer.xjson.asm.XNJSON;
 
 /**
- * P1/P3 冒烟正确性验证：
- * byte[] 直解析串行 / SWAR 边界并行 双路径交叉比对。
+ * P1 冒烟正确性验证：byte[] 零拷贝串行实体解析与通用树路径交叉比对。
  */
 public class SmokeTest {
 
@@ -43,14 +42,7 @@ public class SmokeTest {
 			checkEq(list.get(i), src.get(i), "serial list[" + i + "]");
 		}
 
-		// 2) 并行实体列表（P3）
-		List<HD3D> plist = xn.parseListParallel(json, HD3D.class);
-		check(plist.size() == src.size(), "parallel list size");
-		for (int i = 0; i < src.size(); i += 997) {
-			checkEq(plist.get(i), src.get(i), "parallel list[" + i + "]");
-		}
-
-		// 3) 通用树 byte[] 路径
+		// 2) 通用树 byte[] 路径
 		Object tree = xn.parseList(json);
 		check(tree instanceof List && ((List<?>) tree).size() == src.size(), "generic tree size");
 

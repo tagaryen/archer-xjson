@@ -10,8 +10,8 @@ import java.util.Set;
 
 public class XMap<K, V> implements Map<K, V> {
 
-	private static final int MIN_TABLE_CAP = 16;
-	private static final float LOAD_FACTOR = 0.65f;
+	private static final int MIN_TABLE_CAP = 32;
+	private static final float LOAD_FACTOR = 0.75f;
 
 	private Object[] keys;
 	private Object[] vals;
@@ -21,7 +21,7 @@ public class XMap<K, V> implements Map<K, V> {
 	private int threshold;
 
 	public XMap() {
-		this(8);
+		this(24);
 	}
 
 	public XMap(int cap) {

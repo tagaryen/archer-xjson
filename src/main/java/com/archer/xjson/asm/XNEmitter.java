@@ -38,8 +38,8 @@ class XNEmitter {
 
 	private final ConstantPool cp;
 	private final CodeAttributeWriter writer;
-	private final List<Branch> branches = new ArrayList<>();
-	private final List<SwitchBranch> switchBranches = new ArrayList<>();
+	private final List<Branch> branches = new ArrayList<>(32);
+	private final List<SwitchBranch> switchBranches = new ArrayList<>(32);
 	private int depth = 0;
 	private int maxDepth = 0;
 	private int maxLocals;
