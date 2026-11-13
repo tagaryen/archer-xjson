@@ -82,11 +82,12 @@ final class JsonParser {
         if (List.class.isAssignableFrom(type)) {
             return readList(n.args != null && n.args.length == 1 ? n.args[0] : null);
         }
-        if (type == java.time.LocalDateTime.class) return java.time.LocalDateTime.parse(readString(), LDT_FMT);
-        if (type == java.time.LocalDate.class) return java.time.LocalDate.parse(readString(), LD_FMT);
-        if (type == java.time.LocalTime.class) return java.time.LocalTime.parse(readString(), LT_FMT);
+        if (type == java.time.LocalDateTime.class) return DateTimes.parseLdt(readString());
+        if (type == java.time.LocalDate.class) return DateTimes.parseLd(readString());
+        if (type == java.time.LocalTime.class) return DateTimes.parseLt(readString());
         if (java.util.Date.class.isAssignableFrom(type)) {
-            long ms = readLong();
+            skipWs();
+            long ms = buf[pos] == '"' ? DateTimes.epochMillis(readString()) : readLong();
             if (type == java.sql.Date.class) return new java.sql.Date(ms);
             if (type == java.sql.Time.class) return new java.sql.Time(ms);
             if (type == java.sql.Timestamp.class) return new java.sql.Timestamp(ms);
@@ -534,7 +535,7 @@ final class JsonParser {
         if (pos != end) throw err("trailing characters at " + pos);
     }
 
-    private IllegalArgumentException err(String msg) {
-        return new IllegalArgumentException(msg + " (pos=" + pos + ")");
+    private XJsonException err(String msg) {
+        return new XJsonException(msg + " (pos=" + pos + ")");
     }
 }
